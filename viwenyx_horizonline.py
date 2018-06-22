@@ -86,7 +86,7 @@ if __name__ == '__main__':
     app.SetOutputWindowAttributes(title='stdout')  
     wx.InitAllImageHandlers()
     
-    imgpath = 'Frame Images/FRAMES/'
+    imgpath = 'Frame Images/Frame Images/'
     jpgdict=GetJPGDict(imgpath)
     horizondict={}
     
