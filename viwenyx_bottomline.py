@@ -50,10 +50,20 @@ if __name__=='__main__':
             y=int(bbxdict['y'])
             width=int(bbxdict['width'])
             height=int(bbxdict['height'])
-            for i in range(x,x+width):
-                img[y+height][i][0]=0
-                img[y+height][i][1]=255
-                img[y+height][i][2]=0
+            try:
+                for i in range(x,x+width):
+                    img[y+height][i][0]=0
+                    img[y+height][i][1]=255
+                    img[y+height][i][2]=0
+            except IndexError:
+                if x+width>639:
+                    max_x=639
+                else:
+                    max_x=x+width
+                for i in range(x,max_x):
+                    img[y+height][i][0]=0
+                    img[y+height][i][1]=255
+                    img[y+height][i][2]=0
         scimisc.imsave(filepath+jpgdict[imgindex].split('.')[0]+'_bottom.jpg',img)
 
 
