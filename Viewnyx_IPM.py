@@ -19,9 +19,7 @@ IMAGE_W = 640
 
 
 if __name__=='__main__':
-    #src = np.float32([[779, 499], [1030, 499], [90, 902], [1944, 902]])
-    #dst = np.float32([[779, 699], [1000, 699], [779, 1080], [1052,1080]])
-    #
+
     src = np.float32([[233, 283], [370, 289], [51, 354], [492, 368]])
     dst = np.float32([[265, 283], [375, 283], [256, 440], [375, 440]])
     M = cv2.getPerspectiveTransform(src, dst) # The transformation matrix
