@@ -2,7 +2,8 @@
 """
 Created on Sat Apr 28 20:28:07 2018
 
-call yolo detection
+call yolov2 for detection, make bounding boxes for all kinds of cars, save the 
+bounding boxes into json file that VIVALab Annotator can read
 
 @author: Wen Wen
 """
