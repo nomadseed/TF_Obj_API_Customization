@@ -53,7 +53,9 @@ if __name__=='__main__':
         for imagename in imagedict:
             if 'png' in imagename:
                 img=cv2.imread(imagepath+imagename)
-            
+                # skip the broken images
+                if img is None:
+                    continue
                 #img=cv2.resize(img,(100,50))
                 result.append(tfnet.return_predict(img))
                 if len(result[0])==0:
