@@ -6,7 +6,7 @@ call yolo detection
 
 @author: Wen Wen
 """
-
+import argparse
 import cv2
 import os
 import time
@@ -16,17 +16,26 @@ import json
 import shutil
 
 if __name__=='__main__':
+    # pass the parameters
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--GPU', type=float, default=1.0, help="select the GPU to be used (default 1.0)")
+    parser.add_argument('--file_path', type=str, 
+                        default='D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/testframes/', 
+                        help="File path of input data (default 'D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/testframes/')")
+    
+    args = parser.parse_args()
     
     option={
             'model':'cfg/yolo.cfg',
             'load':'bin/yolov2.weights',
-            'threshold':0.3
+            'threshold':0.3,
+            'gpu': args.GPU
             }
 
     tfnet=TFNet(option)
     
     # 
-    filepath='D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/testframes/'
+    filepath=args.file_path
     folderdict=os.listdir(filepath)
     starttime=time.time()
     for i in folderdict:
