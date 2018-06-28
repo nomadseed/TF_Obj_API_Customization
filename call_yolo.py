@@ -5,6 +5,8 @@ Created on Sat Apr 28 20:28:07 2018
 call yolov2 for detection, make bounding boxes for all kinds of cars, save the 
 bounding boxes into json file that VIVALab Annotator can read
 
+example: python3 call_yolo.py --file_path ./some/folder/ --GPU 0.9
+
 @author: Wen Wen
 """
 import argparse
@@ -19,25 +21,29 @@ import shutil
 if __name__=='__main__':
     # pass the parameters
     parser = argparse.ArgumentParser()
-    parser.add_argument('--GPU', type=float, default=1.0, help="select the GPU to be used (default 1.0)")
+    parser.add_argument('--GPU', type=float, default=0.9, help="select the GPU to be used (default 1.0)")
     parser.add_argument('--file_path', type=str, 
                         default='D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/testframes/', 
                         help="File path of input data (default 'D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/testframes/')")
     
     args = parser.parse_args()
     
+
+    
+    # set the work directory 
+    filepath=args.file_path
+    folderdict=os.listdir(filepath)
+    
+    # initialize the darknet
     option={
             'model':'cfg/yolo.cfg',
             'load':'bin/yolov2.weights',
             'threshold':0.3,
             'gpu': args.GPU
             }
-
     tfnet=TFNet(option)
     
-    # 
-    filepath=args.file_path
-    folderdict=os.listdir(filepath)
+    # begin auto-labelling
     starttime=time.time()
     for i in folderdict:
         imagepath=filepath+i+'/'
@@ -53,8 +59,10 @@ if __name__=='__main__':
         for imagename in imagedict:
             if 'png' in imagename:
                 img=cv2.imread(imagepath+imagename)
+                
                 # skip the broken images
                 if img is None:
+                    del img
                     continue
                 #img=cv2.resize(img,(100,50))
                 result.append(tfnet.return_predict(img))
@@ -105,6 +113,7 @@ if __name__=='__main__':
                         elif nonpositive and 'car' in imagename: # FN
                             fn+=1
                     """
+                del img
             # clear the result list for current image
             result=[]
             nonpositive=True
