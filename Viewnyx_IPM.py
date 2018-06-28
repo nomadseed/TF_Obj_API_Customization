@@ -36,4 +36,4 @@ if __name__=='__main__':
     cv2.imwrite(filepath+filename.split('.')[0]+'_after_IPM.jpg', warped_img)
     Mappingdict={'M':M.tolist(),'Minv':Minv.tolist()}
     with open(filepath+filename.split('.')[0]+'_MappingMatrix.json','w') as savefile:
-        json.dump(Mappingdict, savefile)
+        savefile.write(json.dumps(Mappingdict, sort_keys = True, indent = 4))
