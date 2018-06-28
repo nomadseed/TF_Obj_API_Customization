@@ -42,6 +42,7 @@ if __name__=='__main__':
             'gpu': args.GPU
             }
     tfnet=TFNet(option)
+    print('In processing......')
     
     # begin auto-labelling
     starttime=time.time()
