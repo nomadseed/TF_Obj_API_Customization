@@ -14,8 +14,8 @@
 % author@wenwen
 
 %% initialize the parameters of camera
-alpha=0; % pitch angle alpha
-beta=0; % yaw angle beta
+alpha=0.2; % yaw angle alpha
+beta=0; % pitch angle beta
 gamma=0; % roll angle gamma
 dx=0; % distance from camera to x 
 dy=0; % distance from camera to y
@@ -30,7 +30,7 @@ focal=1; % focal length, make sure dz>=focal, otherwise the img is lost
 % projection mat from 2D to 3D
 A=[     1       0       -w/2;
         0       1       -h/2;
-        0       0       1;
+        0       0       0;
         0       0       1];
 
 % change angle to rad    
@@ -78,11 +78,12 @@ M=I*(R*T*A);
 
 %% calculate IPM of an image
 img=imread('testipm.jpg'); % original image
-img_ipm=uint8(zeros(h,w,3));% new image
+img_ipm=uint8(zeros(h,w,3));% image of IPM
+img_itp=uint8(zeros(h,w,3));% image of interpolation
 for x=1:w
    for y=1:h
         % transform [t*x,t*y,t]' into [x,y,1]'
-        pos_new=uint16(floor(M*[y;x;1]));
+        pos_new=M*[y;x;1];
         pos_new(1)=pos_new(1)/pos_new(3);
         pos_new(2)=pos_new(2)/pos_new(3);
         pos_new(3)=1;
@@ -94,12 +95,32 @@ for x=1:w
    end
 end
 
+%% interpolation after transformation
+% img_itp=img_ipm;
+% for x=1:w-1
+%    for y=1:h-1
+%        if img_itp(y,x,1)~=0
+%            if img_itp(y+1,x,1)==0 && img_itp(y+1,x,2)==0 && img_itp(y+1,x,3)==0
+%                img_itp(y+1,x,1)=img_itp(y,x,1);
+%                img_itp(y+1,x,2)=img_itp(y,x,2);
+%                img_itp(y+1,x,3)=img_itp(y,x,3);
+%            end
+%            if img_itp(y,x+1,1)==0 && img_itp(y,x+1,2)==0 && img_itp(y,x+1,3)==0
+%                img_itp(y,x+1,1)=img_itp(y,x,1);
+%                img_itp(y,x+1,2)=img_itp(y,x,2);
+%                img_itp(y,x+1,3)=img_itp(y,x,3);
+%            end
+%        end
+%    end
+% end
+
 %% show the img
 figure(1);
 subplot(1,2,1);
 imshow(img);
 subplot(1,2,2);
 imshow(img_ipm);
-
+% subplot(2,2,3);
+% imshow(img_itp);
 
 % End of File %
