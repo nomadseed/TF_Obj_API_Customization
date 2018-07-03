@@ -14,23 +14,23 @@
 % author@wenwen
 
 %% initialize the parameters of camera
-alpha=0.2; % yaw angle alpha
-beta=0; % pitch angle beta
-gamma=0; % roll angle gamma
-dx=0; % distance from camera to x 
-dy=0; % distance from camera to y
-dz=1; % distance from camera to z (why move to bottom right???)
+alpha=0; % pitch angle alpha, look down if alpha>0
+beta=0; % yaw angle beta, look left if beta>0
+gamma=0; % roll angle gamma, clockwise if gamma>0
+dx=0; % distance from camera to x,move right if dx>0
+dy=0; % distance from camera to y,move downward if dy>0
+dz=0; % distance from camera to z,step away from frame if dz>0 
 
 w=640; % img width in pixel
 h=480; % img height in pixel
 
-focal=1; % focal length, make sure dz>=focal, otherwise the img is lost
+focal=1; % focal length
 
 %% calculate matrices
 % projection mat from 2D to 3D
 A=[     1       0       -w/2;
         0       1       -h/2;
-        0       0       0;
+        0       0       1;
         0       0       1];
 
 % change angle to rad    
@@ -77,42 +77,24 @@ M=I*(R*T*A);
 %     2.1540e-04  -4.3104e-03 1.0];
 
 %% calculate IPM of an image
-img=imread('testipm.jpg'); % original image
+img=imread('4.jpg'); % original image
 img_ipm=uint8(zeros(h,w,3));% image of IPM
 img_itp=uint8(zeros(h,w,3));% image of interpolation
-for x=1:w
-   for y=1:h
+for y=1:h
+   for x=1:w
         % transform [t*x,t*y,t]' into [x,y,1]'
-        pos_new=M*[y;x;1];
-        pos_new(1)=pos_new(1)/pos_new(3);
-        pos_new(2)=pos_new(2)/pos_new(3);
-        pos_new(3)=1;
+        pos_new=M*[x;y;1];
+        pos_new=pos_new./pos_new(3); % get homogeneous coordinates
         pos_new=uint16(floor(pos_new));
         % draw the pixels located in the new img only
-        if pos_new(1)>=1 && pos_new(1)<=h && pos_new(2)>=1 && pos_new(2)<=w
-            img_ipm(pos_new(1),pos_new(2),:)=img(y,x,:);
+        if pos_new(1)>=1 && pos_new(1)<=w && pos_new(2)>=1 && pos_new(2)<=h
+            img_ipm(pos_new(2),pos_new(1),:)=img(y,x,:);
         end
    end
 end
 
 %% interpolation after transformation
-% img_itp=img_ipm;
-% for x=1:w-1
-%    for y=1:h-1
-%        if img_itp(y,x,1)~=0
-%            if img_itp(y+1,x,1)==0 && img_itp(y+1,x,2)==0 && img_itp(y+1,x,3)==0
-%                img_itp(y+1,x,1)=img_itp(y,x,1);
-%                img_itp(y+1,x,2)=img_itp(y,x,2);
-%                img_itp(y+1,x,3)=img_itp(y,x,3);
-%            end
-%            if img_itp(y,x+1,1)==0 && img_itp(y,x+1,2)==0 && img_itp(y,x+1,3)==0
-%                img_itp(y,x+1,1)=img_itp(y,x,1);
-%                img_itp(y,x+1,2)=img_itp(y,x,2);
-%                img_itp(y,x+1,3)=img_itp(y,x,3);
-%            end
-%        end
-%    end
-% end
+
 
 %% show the img
 figure(1);
