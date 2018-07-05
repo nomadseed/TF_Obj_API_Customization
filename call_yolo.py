@@ -52,10 +52,7 @@ if __name__=='__main__':
         #np.random.shuffle(imagedict)
     
         result=[]
-
         imgindex=0
-        nonpositive=True
-        
         annotationdict={}
         for imagename in imagedict:
             if 'bbx' not in imagename and ('png' in imagename or 'jpg' in imagename):
@@ -97,11 +94,11 @@ if __name__=='__main__':
                             tl=(result[0][i]['topleft']['x'],result[0][i]['topleft']['y'])
                             br=(result[0][i]['bottomright']['x'],result[0][i]['bottomright']['y'])
                             if annodict['label']=='car':
-                                img=cv2.rectangle(img,tl,br,(0,0,255),3)
+                                img=cv2.rectangle(img,tl,br,(0,0,255),3) # red
                             elif annodict['label']=='truck':
-                                img=cv2.rectangle(img,tl,br,(0,255,0),3)
+                                img=cv2.rectangle(img,tl,br,(0,255,0),3) # green
                             elif annodict['label']=='bus':
-                                img=cv2.rectangle(img,tl,br,(255,0,0),3)
+                                img=cv2.rectangle(img,tl,br,(255,0,0),3) # blue
                             elif annodict['label']=='motorcycle':
                                 img=cv2.rectangle(img,tl,br,(0,255,255),3) # yellow
                     cv2.imwrite(filepath+'bbx/'+imagename.split('.')[0]+'_bbx.jpg',img) # don't save it in png!!!
@@ -109,10 +106,6 @@ if __name__=='__main__':
                 del img
             # clear the result list for current image
             result=[]
-            nonpositive=True
-            #imgindex+=1
-            #if imgindex>10:
-                #break
             
         # after done save all the annotation into json file, save the file
         with open(imagepath+'annotation_'+imagepath.split('/')[-2]+'.json','w') as savefile:
