@@ -102,6 +102,8 @@ if __name__=='__main__':
                                 img=cv2.rectangle(img,tl,br,(0,255,0),3)
                             elif annodict['label']=='bus':
                                 img=cv2.rectangle(img,tl,br,(255,0,0),3)
+                            elif annodict['label']=='motorcycle':
+                                img=cv2.rectangle(img,tl,br,(0,255,255),3) # yellow
                     cv2.imwrite(filepath+'bbx/'+imagename.split('.')[0]+'_bbx.jpg',img) # don't save it in png!!!
 
                 del img
