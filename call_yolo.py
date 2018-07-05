@@ -41,7 +41,7 @@ if __name__=='__main__':
             'threshold':0.3,
             'gpu': args.GPU
             }
-    tfnet=TFNet(option)
+    tfnet=TFNet(option)    
     print('In processing......')
     
     # begin auto-labelling
@@ -58,7 +58,7 @@ if __name__=='__main__':
         
         annotationdict={}
         for imagename in imagedict:
-            if 'png' in imagename:
+            if 'bbx' not in imagename and ('png' in imagename or 'jpg' in imagename):
                 img=cv2.imread(imagepath+imagename)
                 
                 # skip the broken images
@@ -78,7 +78,7 @@ if __name__=='__main__':
                     #save the annotation into json file
                     annotationdict[imagename]=[]
                     for i in range(len(result[0])):
-                        if result[0][i]['label'] in 'car truck bus van vehicle':
+                        if result[0][i]['label'] in 'car truck bus':
                             annodict={}
                             annodict['id']=i
                             annodict['category']='leading'
@@ -86,34 +86,24 @@ if __name__=='__main__':
                             annodict['image_width']=img.shape[1]
                             annodict['image_height']=img.shape[0]
                             annodict['shape']=['Box',1]
-                            annodict['label']='Car'
+                            annodict['label']=result[0][i]['label']
                             annodict['x']=result[0][i]['topleft']['x']
                             annodict['y']=result[0][i]['topleft']['y']
                             annodict['width']=result[0][i]['bottomright']['x']-annodict['x']
                             annodict['height']=result[0][i]['bottomright']['y']-annodict['y']
-                    
                             annotationdict[imagename].append(annodict)
-                            #img=cv2.rectangle(img,tl,br,(0,0,255),5)
-                    #cv2.imwrite(filepath+'/savedimage/'+imagename,img)
-            
-                    """
-                    # for roc on bounding boxes
-                    # check for the positive detection first
-                    for i in range(len(result[0])):
-                        if result[0][i]['label'] in 'car truck bus van vehicle' and 'car' in imagename: # TP
-                            tp+=1
-                            nonpositive=False
-                            break
-                        elif result[0][i]['label'] in 'car truck bus van vehicle' and 'car' not in imagename: # FP
-                            fp+=1
-                            nonpositive=False
-                            break
-                        # if no positive detection
-                        if nonpositive and 'car' not in imagename: # TN
-                            tn+=1
-                        elif nonpositive and 'car' in imagename: # FN
-                            fn+=1
-                    """
+                            
+                            # for debugging, save the images with bounding boxes
+                            tl=(result[0][i]['topleft']['x'],result[0][i]['topleft']['y'])
+                            br=(result[0][i]['bottomright']['x'],result[0][i]['bottomright']['y'])
+                            if annodict['label']=='car':
+                                img=cv2.rectangle(img,tl,br,(0,0,255),3)
+                            elif annodict['label']=='truck':
+                                img=cv2.rectangle(img,tl,br,(0,255,0),3)
+                            elif annodict['label']=='bus':
+                                img=cv2.rectangle(img,tl,br,(255,0,0),3)
+                    cv2.imwrite(filepath+'bbx/'+imagename.split('.')[0]+'_bbx.jpg',img) # don't save it in png!!!
+
                 del img
             # clear the result list for current image
             result=[]
