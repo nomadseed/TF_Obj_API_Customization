@@ -14,13 +14,6 @@ import numpy as np
 
 import xml.etree.cElementTree as ET
 
-def setFolder(folderPath):
-    if not os.path.exists(folderPath):
-        os.makedirs(folderPath)
-
-def jsonWrite(filename, jsondata):
-    with open(filename, 'w') as savefile:
-        savefile.write(json.dumps(jsondata, sort_keys = True, indent = 4))
 
 def jsonRead(filename):
     return json.load(open(filename))
@@ -97,8 +90,8 @@ if __name__ == '__main__':
     # pass the parameters
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, 
-                        default='./Frame Images/', 
-                        help="File path of input data (default 'D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/testframes/')")
+                        default='./testframes/', 
+                        help="File path of input data (default './testframes/')")
     
     args = parser.parse_args()
     
@@ -121,17 +114,10 @@ if __name__ == '__main__':
         except:
             print('failed to open', jsonname, '------- json doesnt exist')
             continue
-        convertJson2Xml(jsondata, imagepath)
         
         # convert one json file into many xml file corresponding to the image names
+        convertJson2Xml(jsondata, imagepath)
         
-    
-'''
-    # get json data, there are filenames in those data
+        
 
-
-    # create train Annotations + Data folder
-    setFolder(sys.argv[1]+"/trainAnnotations")
-    _convertJson2Xml(jsonLabels, filenamesPng, filenamesTrainPng, sys.argv[1]+"/trainAnnotations")
-    '''
 """ End of File """
