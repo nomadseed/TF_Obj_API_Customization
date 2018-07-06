@@ -25,13 +25,6 @@ def jsonWrite(filename, jsondata):
 def jsonRead(filename):
     return json.load(open(filename))
 
-def prettifyElement(elem):
-    """Return a pretty-printed XML string for the Element.
-    """
-    rough_string = ET.tostring(elem, 'utf-8')
-    reparsed = minidom.parseString(rough_string)
-    return reparsed.toprettyxml(indent="\t")
-
 def convertJson2Xml(jsondata, imagepath):
     """
     to convert json annotation (one json per folder) into xml (one xml per image)
