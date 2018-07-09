@@ -12,7 +12,8 @@ import json
 import argparse
 import numpy as np
 
-import xml.etree.cElementTree as ET
+from lxml import etree
+import xml.etree.ElementTree as ET
 
 
 def jsonRead(filename):
@@ -36,11 +37,11 @@ def convertJson2Xml(jsondata, imagepath):
         root=ET.Element('annotation')
         ET.SubElement(root,'folder').text=imagepath.split('/')[-2]
         ET.SubElement(root,'filename').text=imagename
-        ET.SubElement(root, 'dataset name').text  = 'Viewnyx 5000'
+        ET.SubElement(root, 'datasetname').text  = 'Viewnyx 5000'
         sub = ET.SubElement(root, "size")
         ET.SubElement(sub, "width").text  = '640'
         ET.SubElement(sub, "height").text  = '480'
-        ET.SubElement(sub, "depth").text  = '1'
+        ET.SubElement(sub, "depth").text  = '3'
         ET.SubElement(root, "segmented").text='0'
         
         # save each bounding box in the image
@@ -50,7 +51,7 @@ def convertJson2Xml(jsondata, imagepath):
             ET.SubElement(obj, "pose").text  = 'Left'
             ET.SubElement(obj, 'heading').text = bbx['category']
             ET.SubElement(obj,'id').text = str(bbx['id'])
-            ET.SubElement(obj, "truncated").text  = '1'
+            ET.SubElement(obj, "truncated").text  = '0'
             ET.SubElement(obj, "difficult").text  = '0'
             bndbox = ET.SubElement(obj,'bndbox')
             ET.SubElement(bndbox, "xmin").text = str(bbx['x'])
@@ -58,13 +59,17 @@ def convertJson2Xml(jsondata, imagepath):
             ET.SubElement(bndbox, "xmax").text = str(bbx['x']+bbx['width'])
             ET.SubElement(bndbox, "ymax").text = str(bbx['y']+bbx['height'])
         
-        # save the xml file for current image
-        tree = ET.ElementTree(root)
-        tree.write(imagepath+imagename.replace('jpg','xml'))
+        # save the xml file for current image with pretty printing
+        
+        xmlstr=ET.tostring(root) # return a binary string if encoding is default
+        tree=etree.fromstring(xmlstr)
+        xmlstr=etree.tostring(tree,pretty_print=True) # reform the xml string with pretty printing
+        with open(imagepath+imagename.replace('jpg','xml'),'wb') as savefile:
+            savefile.write(xmlstr)
             
         if ((10*cnt)%totalfile) <= 1:
             print(100*cnt/totalfile, '%')
-        cnt+=1
+        cnt+=1        
     
 def getImageList(filepath,keyword_with='jpg',keyword_without='o'):
     '''
@@ -90,7 +95,7 @@ if __name__ == '__main__':
     # pass the parameters
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, 
-                        default='./testframes/', 
+                        default='./Frame Images/', 
                         help="File path of input data (default './testframes/')")
     
     args = parser.parse_args()
@@ -116,7 +121,7 @@ if __name__ == '__main__':
             continue
         
         # convert one json file into many xml file corresponding to the image names
-        convertJson2Xml(jsondata, imagepath)
+        string=convertJson2Xml(jsondata, imagepath)
         
         
 
