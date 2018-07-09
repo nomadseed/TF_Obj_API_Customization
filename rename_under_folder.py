@@ -20,7 +20,7 @@ if __name__ == '__main__':
     # pass the parameters
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, 
-                        default='./FrameImages/', 
+                        default='./testframes/', 
                         help="File path of input data (default './testframes/')")
     
     args = parser.parse_args()
@@ -57,6 +57,15 @@ if __name__ == '__main__':
                 # create a flipped copy
                 tree = ET.parse(imagepath+j)
                 root = tree.getroot()
+                if i not in root.find('filename').text:
+                    root.find('filename').text=i+'_'+root.find('filename').text
+                    # save xml file with flipped annotation
+                    xmlstr=ET.tostring(root) # return a binary string if encoding is default
+                    tree=etree.fromstring(xmlstr)
+                    xmlstr=etree.tostring(tree,pretty_print=True) # reform the xml string with pretty printing
+                    with open(imagepath+j,'wb') as savefile:
+                        savefile.write(xmlstr)
+                    
                 if 'flip' not in root.find('filename').text:
                     root.find('filename').text=root.find('filename').text.replace('.jpg','_flipped.jpg')
                     width=int(float(root.find('size').find('width').text))
@@ -73,6 +82,7 @@ if __name__ == '__main__':
                     xmlstr=etree.tostring(tree,pretty_print=True) # reform the xml string with pretty printing
                     with open(imagepath+j.replace('.xml','_flipped.xml'),'wb') as savefile:
                         savefile.write(xmlstr)
+                        
             if ((2*cnt)%totalfile) <= 1:
                 print(100*cnt/totalfile, '%')
             cnt+=1  
