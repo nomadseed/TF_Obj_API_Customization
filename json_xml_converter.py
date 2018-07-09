@@ -29,26 +29,26 @@ def convertJson2Xml(jsondata, imagepath):
     """
     
     totalfile=len(jsondata)
-    print(str(totalfile)+' files in the folder '+imagepath)
+    print(str(totalfile)+' files in the json '+imagepath)
     cnt = 0
     
     for imagename in jsondata:
         # for each image
         root=ET.Element('annotation')
         ET.SubElement(root,'folder').text=imagepath.split('/')[-2]
-        ET.SubElement(root,'filename').text=imagename
-        ET.SubElement(root, 'datasetname').text  = 'Viewnyx 5000'
+        ET.SubElement(root,'filename').text=jsondata[imagename]['name']
+        ET.SubElement(root, 'datasetname').text  = 'Viewnyx part 1'
         sub = ET.SubElement(root, "size")
-        ET.SubElement(sub, "width").text  = '640'
-        ET.SubElement(sub, "height").text  = '480'
+        ET.SubElement(sub, "width").text  = str(jsondata[imagename]['width'])
+        ET.SubElement(sub, "height").text  = str(jsondata[imagename]['height'])
         ET.SubElement(sub, "depth").text  = '3'
         ET.SubElement(root, "segmented").text='0'
         
         # save each bounding box in the image
-        for bbx in jsondata[imagename]:
+        for bbx in jsondata[imagename]['annotations']:
             obj = ET.SubElement(root, "object")
             ET.SubElement(obj, "name").text  = bbx['label'].lower() # change it to lower letters
-            ET.SubElement(obj, "pose").text  = 'Left'
+            ET.SubElement(obj, "pose").text  = 'left'
             ET.SubElement(obj, 'heading').text = bbx['category']
             ET.SubElement(obj,'id').text = str(bbx['id'])
             ET.SubElement(obj, "truncated").text  = '0'
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     # pass the parameters
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, 
-                        default='./Frame Images/', 
+                        default='./testframes/', 
                         help="File path of input data (default './testframes/')")
     
     args = parser.parse_args()
