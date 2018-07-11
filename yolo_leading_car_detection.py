@@ -52,10 +52,11 @@ def classifier(x,y,width,height,threshold=0.5, strip_x1=312,strip_x2=328):
 if __name__=='__main__':
     # pass the parameters
     parser = argparse.ArgumentParser()
-    parser.add_argument('--GPU', type=float, default=0.8, help="select the GPU to be used (default 1.0)")
+    parser.add_argument('--GPU', type=float, default=0.8, help="select the GPU to be used (default 0.8)")
     parser.add_argument('--file_path', type=str, 
                         default='test/leading_car/', 
                         help="File path of input data (default 'D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/testframes/')")
+    parser.add_argument('--draw_image', type=bool, default=False, help="draw image for debug (default False)")
     
     args = parser.parse_args()
     
@@ -63,6 +64,7 @@ if __name__=='__main__':
     
     # set the work directory 
     filepath=args.file_path
+    drawflag=args.draw_image
     folderdict=os.listdir(filepath)
     
     # initialize the darknet
@@ -130,14 +132,16 @@ if __name__=='__main__':
                             
                             annotationdict[imagename]['annotations'].append(annodict)
                             
-                            # for debugging, save the images with bounding boxes
-                            tl=(result[0][i]['topleft']['x'],result[0][i]['topleft']['y'])
-                            br=(result[0][i]['bottomright']['x'],result[0][i]['bottomright']['y'])
-                            if annodict['category']=='leading':
-                                img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
-                            elif annodict['category']=='sideways':
-                                img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
-                    cv2.imwrite(imagepath+'leadingdetect/'+imagename.split('.')[0]+'_leadingdetect.jpg',img) # don't save it in png!!!
+                            if darw_flag:
+                                # for debugging, save the images with bounding boxes
+                                tl=(result[0][i]['topleft']['x'],result[0][i]['topleft']['y'])
+                                br=(result[0][i]['bottomright']['x'],result[0][i]['bottomright']['y'])
+                                if annodict['category']=='leading':
+                                    img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
+                                elif annodict['category']=='sideways':
+                                    img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+                    if darw_flag:
+                        cv2.imwrite(imagepath+'leadingdetect/'+imagename.split('.')[0]+'_leadingdetect.jpg',img) # don't save it in png!!!
 
                 del img
             # clear the result list for current image
