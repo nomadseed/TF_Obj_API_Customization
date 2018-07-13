@@ -14,9 +14,7 @@ import cv2
 import os
 import time
 from darkflow.net.build import TFNet
-import numpy as np
 import json
-import shutil
 
 def classifier(x,y,width,height,threshold=0.5, strip_x1=312,strip_x2=328):
     """
@@ -90,8 +88,6 @@ if __name__=='__main__':
         result=[]
         imgindex=0
         annotationdict={}
-        cnt=0
-        totalimg=len(imagedict)
         for imagename in imagedict:
             if 'leading' not in imagename and ('png' in imagename or 'jpg' in imagename):
                 img=cv2.imread(imagepath+imagename)
@@ -110,15 +106,16 @@ if __name__=='__main__':
                     #shutil.move(imagepath+imagename, imagepath+'disgard/'+imagename)
                 
                 else:
-                    #save the annotation into json file
+                    # create annotation for json file
                     annotationdict[imagename]={}
+                    annotationdict[imagename]['name']=imagename
+                    annotationdict[imagename]['width']=img.shape[1]
+                    annotationdict[imagename]['height']=img.shape[0]
+                    annotationdict[imagename]['annotations']=[]
+                    
+                    # save result about vehicles
                     for i in range(len(result[0])):
                         if result[0][i]['label'].lower() in 'car truck bus':
-                            annotationdict[imagename]['name']=imagename
-                            annotationdict[imagename]['width']=img.shape[1]
-                            annotationdict[imagename]['height']=img.shape[0]
-                            annotationdict[imagename]['annotations']=[]
-                                                        
                             annodict={}
                             annodict['id']=i
                             annodict['shape']=['Box',1]
@@ -132,7 +129,7 @@ if __name__=='__main__':
                             
                             annotationdict[imagename]['annotations'].append(annodict)
                             
-                            if darw_flag:
+                            if drawflag:
                                 # for debugging, save the images with bounding boxes
                                 tl=(result[0][i]['topleft']['x'],result[0][i]['topleft']['y'])
                                 br=(result[0][i]['bottomright']['x'],result[0][i]['bottomright']['y'])
@@ -140,21 +137,18 @@ if __name__=='__main__':
                                     img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
                                 elif annodict['category']=='sideways':
                                     img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
-                    if darw_flag:
+                    if drawflag:
                         cv2.imwrite(imagepath+'leadingdetect/'+imagename.split('.')[0]+'_leadingdetect.jpg',img) # don't save it in png!!!
 
                 del img
             # clear the result list for current image
             result=[]
-            cnt+=1
-            if ((10*cnt)%totalimg) <= 1:
-                print(int(100*cnt/totalimg), '%')
+
             
         # after done save all the annotation into json file, save the file
         with open(imagepath+'annotation_'+imagepath.split('/')[-2]+'.json','w') as savefile:
             savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
         
-    #print('TP:',tp,' FP:',fp,' TN:',tn,' FN:',fn)
     # show the total time spent
     endtime=time.time()
     print('total time:'+str(endtime-starttime)+' seconds')
