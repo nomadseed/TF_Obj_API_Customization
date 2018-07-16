@@ -128,7 +128,7 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
                 continue
             else:
                 performance['overall']['fp']+=1
-                if annos_benchmark[i]['category']=='leading':
+                if annos_detect[i]['category']=='leading':
                     # miss a leading car in detection
                     performance['leading']['fp']+=1
                 
@@ -138,9 +138,9 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, 
-                        default='D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 winter/YOLO3/darkflow-master/test/leading_car/', 
+                        default='FrameImages/', 
                         help="File path of input data")
-    parser.add_argument('--IoU',type=float,default=0.05,help='percentage of IoU')
+    parser.add_argument('--IoU',type=float,default=0.5,help='percentage of IoU')
     args = parser.parse_args()
     
     filepath=args.file_path
@@ -154,8 +154,13 @@ if __name__=='__main__':
     for foldername in folderdict:
         jsonpath=filepath+foldername+'/'
         # load the json files
-        benchmark=json.load(open(jsonpath+'annotation_'+foldername+'_with_leading.json'))
-        detected=json.load(open(jsonpath+'annotation_'+foldername+'.json'))
+        # path for new dataset:jsonpath+'annotation_'+foldername+'_with_leading.json'
+        # path for old dataset:jsonpath+'annotationfull_'+foldername+'.json'
+        if not os.path.exists(jsonpath+'annotationfull_'+foldername+'.json'):
+            continue   
+        else:
+            benchmark=json.load(open(jsonpath+'annotationfull_'+foldername+'.json'))
+            detected=json.load(open(jsonpath+'annotation_'+foldername+'.json'))
         
         for imgname in detected:
             # if not detected
@@ -186,11 +191,13 @@ if __name__=='__main__':
     print('IoU threshold:',IOUthresh,'\n')
     
     print('overall performance on detecting cars:')
+    print(totalperformance['overall'])
     print('precision:',precision_overall)
     print('recall:',recall_overall)
     print('miss rate:',missrate_overall,'\n')
     
     print('performance on detecting leading cars:')
+    print(totalperformance['leading'])
     print('precision:',precision_leading)
     print('recall:',recall_leading)
     print('miss rate:',missrate_leading,'\n')
