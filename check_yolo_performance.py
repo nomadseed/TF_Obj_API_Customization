@@ -16,6 +16,10 @@ import time
 import numpy as np
 import json
 
+import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
+import matplotlib.pyplot as plt
+
 def getIoU(bbx_benchmark,bbx_detect):
     """
     calculate Intersection over Union of two bounding boxes
@@ -62,7 +66,7 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
                 if bbx['category'].lower()=='leading':
                     performance['leading']['fn']+=1
                     performance['overall']['fn']+=1
-                elif bbx['category'].lower()=='sideways':
+                else:
                     # no benchmark for leading car, tn
                     performance['overall']['fn']+=1
                     
@@ -73,7 +77,7 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
                 if bbx['category'].lower()=='leading':
                     performance['leading']['fp']+=1
                     performance['overall']['fp']+=1
-                elif bbx['category'].lower()=='sideways':
+                else:
                     # no detection for leading car, tn
                     performance['overall']['fp']+=1
         
@@ -96,7 +100,7 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
                         if annos_detect[j]['category'].lower()=='leading': 
                             # fp for leading car
                             performance['leading']['fp']+=1
-                        elif annos_detect[j]['category'].lower()=='sideways':
+                        else:
                             # fn for leading car
                             performance['leading']['fn']+=1
                     
@@ -145,62 +149,114 @@ if __name__=='__main__':
     
     filepath=args.file_path
     folderdict=os.listdir(filepath)
-    IOUthresh=args.IoU
+    #IOUthresh=args.IoU
     
-    # initial the numbers for performance
-    totalperformance={'leading':{'tp':0, 'fp':0, 'tn':0, 'fn':0},
-                      'overall':{'tp':0, 'fp':0, 'tn':0, 'fn':0}}
+    totalperformance={}
+    threshlist=[0.001,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,
+                0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95,0.999]
+    precision_overall_list=[]
+    precision_leading_list=[]
+    recall_overall_list=[]
+    recall_leading_list=[]
+    MRs_overall_list=[]
+    MRs_leading_list=[]
+    # change IoU threshold from 0 to 1.0, interval 0.05
+    for IOUthresh in threshlist:
     
-    for foldername in folderdict:
-        jsonpath=filepath+foldername+'/'
-        # load the json files
-        # path for new dataset:jsonpath+'annotation_'+foldername+'_with_leading.json'
-        # path for old dataset:jsonpath+'annotationfull_'+foldername+'.json'
-        if not os.path.exists(jsonpath+'annotationfull_'+foldername+'.json'):
-            continue   
-        else:
-            benchmark=json.load(open(jsonpath+'annotationfull_'+foldername+'.json'))
-            detected=json.load(open(jsonpath+'annotation_'+foldername+'.json'))
+        # initial the numbers for performance
+        totalperformance[IOUthresh]={'leading':{'tp':0, 'fp':0, 'tn':0, 'fn':0},
+                                            'overall':{'tp':0, 'fp':0, 'tn':0, 'fn':0}}
+    
+        for foldername in folderdict:
+            jsonpath=filepath+foldername+'/'
+            # load the json files
+            if not os.path.exists(jsonpath+'annotationfull_'+foldername+'.json'):
+                continue   
+            else:
+                benchmark=json.load(open(jsonpath+'annotationfull_'+foldername+'.json'))
+                detected=json.load(open(jsonpath+'annotation_'+foldername+'.json'))
         
-        for imgname in detected:
-            # if not detected
-            if len(detected[imgname])==0:
-                annos_detect={}
-            else:
-                annos_detect=detected[imgname]['annotations']
+            for imgname in detected:
+                # if not detected
+                if len(detected[imgname])==0:
+                    annos_detect={}
+                else:
+                    annos_detect=detected[imgname]['annotations']
             
-            # if no such a benchmark
-            if benchmark.get(imgname)==None:
-                annos_benchmark={}
-            else:
-                annos_benchmark=benchmark[imgname]['annotations']
+                # if no such a benchmark
+                if benchmark.get(imgname)==None:
+                    annos_benchmark={}
+                else:
+                    annos_benchmark=benchmark[imgname]['annotations']
             
-            # calculate performance
-            totalperformance=checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUthresh)
+                # calculate performance
+                totalperformance[IOUthresh]=checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance[IOUthresh],IOUthresh)
     
-    # calculate precision, recall and missrate
-    precision_leading=totalperformance['leading']['tp']/(totalperformance['leading']['tp']+totalperformance['leading']['fp'])
-    precision_overall=totalperformance['overall']['tp']/(totalperformance['overall']['tp']+totalperformance['overall']['fp'])
+        # calculate precision, recall and missrate
+        precision_leading=totalperformance[IOUthresh]['leading']['tp']/(totalperformance[IOUthresh]['leading']['tp']+totalperformance[IOUthresh]['leading']['fp'])
+        precision_overall=totalperformance[IOUthresh]['overall']['tp']/(totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fp'])
+        precision_leading_list.append(precision_leading)
+        precision_overall_list.append(precision_overall)
+        
+        recall_leading=totalperformance[IOUthresh]['leading']['tp']/(totalperformance[IOUthresh]['leading']['tp']+totalperformance[IOUthresh]['leading']['fn'])
+        recall_overall=totalperformance[IOUthresh]['overall']['tp']/(totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fn'])
+        recall_leading_list.append(recall_leading)
+        recall_overall_list.append(recall_overall)
+
+        missrate_leading=totalperformance[IOUthresh]['leading']['fn']/(totalperformance[IOUthresh]['leading']['tp']+totalperformance[IOUthresh]['leading']['fn'])
+        missrate_overall=totalperformance[IOUthresh]['overall']['fn']/(totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fn'])
+        MRs_leading_list.append(missrate_leading)
+        MRs_overall_list.append(missrate_overall)
+        
+        '''
+        print('IoU threshold:',IOUthresh,'\n')
     
-    recall_leading=totalperformance['leading']['tp']/(totalperformance['leading']['tp']+totalperformance['leading']['fn'])
-    recall_overall=totalperformance['overall']['tp']/(totalperformance['overall']['tp']+totalperformance['overall']['fn'])
+        print('overall performance on detecting cars:')
+        print(totalperformance[IOUthresh]['overall'])
+        print('precision:',precision_overall)
+        print('recall:',recall_overall)
+        print('miss rate:',missrate_overall,'\n')
     
-    missrate_leading=totalperformance['leading']['fn']/(totalperformance['leading']['tp']+totalperformance['leading']['fn'])
-    missrate_overall=totalperformance['overall']['fn']/(totalperformance['overall']['tp']+totalperformance['overall']['fn'])
+        print('performance on detecting leading cars:')
+        print(totalperformance[IOUthresh]['leading'])
+        print('precision:',precision_leading)
+        print('recall:',recall_leading)
+        print('miss rate:',missrate_leading,'\n')
+        '''
     
-    print('IoU threshold:',IOUthresh,'\n')
+    # save the performance into json file
+    with open(filepath+'performance.json','w') as savefile:
+        savefile.write(json.dumps(totalperformance, sort_keys = True, indent = 4))
     
-    print('overall performance on detecting cars:')
-    print(totalperformance['overall'])
-    print('precision:',precision_overall)
-    print('recall:',recall_overall)
-    print('miss rate:',missrate_overall,'\n')
     
-    print('performance on detecting leading cars:')
-    print(totalperformance['leading'])
-    print('precision:',precision_leading)
-    print('recall:',recall_leading)
-    print('miss rate:',missrate_leading,'\n')
+    # plot the precision, recall and MRs over all the cars and leading cars
+    partname=filepath.split('/')[-2]
+    
+    plt.plot(threshlist,precision_leading_list,'b.-',label='Leading')
+    plt.plot(threshlist,precision_overall_list,'r.-',label='Overall')
+    plt.title(partname+' precision')
+    plt.xlabel('IoU threshold')
+    plt.legend(loc=1)
+    plt.savefig(filepath+'precision.png')
+    plt.show()
+    
+    plt.plot(threshlist,recall_leading_list,'bs-', label='Leading')
+    plt.plot(threshlist,recall_overall_list,'rs-',label='Overall')
+    plt.title(partname+' recall')
+    plt.xlabel('IoU threshold')
+    plt.legend(loc=1)
+    plt.savefig(filepath+'recall.png')
+    plt.show()
+    
+    plt.plot(threshlist,MRs_leading_list,'b+-',label='Leading')
+    plt.plot(threshlist,MRs_overall_list,'r+-',label='Overall')
+    plt.title(partname+' MRs')
+    plt.xlabel('IoU threshold')
+    plt.legend(loc=4)
+    plt.savefig(filepath+'MRs.png')
+    plt.show()
+    
+    
     
     
     
