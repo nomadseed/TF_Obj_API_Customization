@@ -144,12 +144,11 @@ if __name__=='__main__':
     parser.add_argument('--file_path', type=str, 
                         default='FrameImages/', 
                         help="File path of input data")
-    parser.add_argument('--IoU',type=float,default=0.5,help='percentage of IoU')
+    
     args = parser.parse_args()
     
     filepath=args.file_path
     folderdict=os.listdir(filepath)
-    #IOUthresh=args.IoU
     
     totalperformance={}
     threshlist=[0.001,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,
@@ -232,6 +231,9 @@ if __name__=='__main__':
     # plot the precision, recall and MRs over all the cars and leading cars
     partname=filepath.split('/')[-2]
     
+    chartaxis = [0.0,1.0,0.0,1.0]
+    
+    plt.axis(chartaxis)
     plt.plot(threshlist,precision_leading_list,'b.-',label='Leading')
     plt.plot(threshlist,precision_overall_list,'r.-',label='Overall')
     plt.title(partname+' precision')
@@ -240,6 +242,7 @@ if __name__=='__main__':
     plt.savefig(filepath+'precision.png')
     plt.show()
     
+    plt.axis(chartaxis)
     plt.plot(threshlist,recall_leading_list,'bs-', label='Leading')
     plt.plot(threshlist,recall_overall_list,'rs-',label='Overall')
     plt.title(partname+' recall')
@@ -248,6 +251,7 @@ if __name__=='__main__':
     plt.savefig(filepath+'recall.png')
     plt.show()
     
+    plt.axis(chartaxis)
     plt.plot(threshlist,MRs_leading_list,'b+-',label='Leading')
     plt.plot(threshlist,MRs_overall_list,'r+-',label='Overall')
     plt.title(partname+' MRs')
