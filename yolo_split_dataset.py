@@ -21,7 +21,7 @@ if __name__=='__main__':
     # pass the parameters
     parser = argparse.ArgumentParser()
     parser.add_argument('--GPU', type=float, default=0.8, help="select the GPU to be used (default 1.0)")
-    parser.add_argument('--GPUname', type=int, default=0, help="select the GPU to be used (default to use GPU 0)")
+    parser.add_argument('--gpuName', type=str, default="/device:gpu:0", help="select the GPU to be used (default to use GPU 0)")
     parser.add_argument('--file_path', type=str, 
                         default='test/leading_car/', 
                         help="File path of input data (default 'D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/testframes/')")
@@ -40,7 +40,7 @@ if __name__=='__main__':
             'load':'bin/yolov2.weights',
             'threshold':0.3,
             'gpu': args.GPU,
-            'GPUname': args.GPUname
+            'gpuName': args.gpuName
             }
     tfnet=TFNet(option)    
     print('In processing......')
@@ -64,6 +64,8 @@ if __name__=='__main__':
                 # skip the broken images
                 if img is None:
                     del img
+                    # move the file to be disgarded into a new folder, keep the useful untouched
+                    shutil.move(imagepath+imagename, imagepath+'disgard/'+imagename)
                     continue
                 #img=cv2.resize(img,(100,50))
                 result.append(tfnet.return_predict(img))
