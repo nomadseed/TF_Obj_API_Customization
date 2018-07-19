@@ -16,7 +16,7 @@ import time
 from darkflow.net.build import TFNet
 import json
 
-def classifier(x,y,width,height,threshold=0.5, strip_x1=312,strip_x2=328):
+def classifier(x,y,width,height,threshold=0.2, strip_x1=305,strip_x2=335):
     """
     input the information of bounding box (topleft, bottomright), get the possible
     category of the detected object. the method used here could be some meta-algorithm
@@ -46,6 +46,9 @@ def classifier(x,y,width,height,threshold=0.5, strip_x1=312,strip_x2=328):
         category='sideways'
     
     return category
+
+def returnbottomy(bbx):
+    return bbx['y']+bbx['height']
 
 if __name__=='__main__':
     # pass the parameters
@@ -79,6 +82,7 @@ if __name__=='__main__':
     starttime=time.time()
     for i in folderdict:
         imagepath=filepath+i+'/'
+        print('processing folder:',imagepath)
         if not os.path.exists(imagepath+'leadingdetect/'):
             os.makedirs(imagepath+'leadingdetect/')
             
@@ -128,17 +132,21 @@ if __name__=='__main__':
                             annodict['category']=category # decide the category with the cordinates of bbx
                             
                             annotationdict[imagename]['annotations'].append(annodict)
-                            
-                            if drawflag:
-                                # for debugging, save the images with bounding boxes
-                                tl=(result[0][i]['topleft']['x'],result[0][i]['topleft']['y'])
-                                br=(result[0][i]['bottomright']['x'],result[0][i]['bottomright']['y'])
-                                if annodict['category']=='leading':
-                                    img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
-                                elif annodict['category']=='sideways':
-                                    img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
-                    if drawflag:
-                        cv2.imwrite(imagepath+'leadingdetect/'+imagename.split('.')[0]+'_leadingdetect.jpg',img) # don't save it in png!!!
+                    
+                    # loop through all bbx with category 'leading', draw the nearest one in red bbx
+                    bbxlist=annotationdict[imagename]['annotations']
+                    bbxlist.sort(key=returnbottomy,reverse=True)
+                    leadingflag=True
+                    for bbx in bbxlist:
+                        tl=(bbx['x'],bbx['y'])
+                        br=(bbx['x']+bbx['width'],bbx['y']+bbx['height'])
+                        if leadingflag and bbx['category']=='leading':
+                            leadingflag=False
+                            img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+                        else:
+                            img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
+
+                    cv2.imwrite(imagepath+'leadingdetect/'+imagename.split('.')[0]+'_leadingdetect.jpg',img) # don't save it in png!!!
 
                 del img
             # clear the result list for current image
