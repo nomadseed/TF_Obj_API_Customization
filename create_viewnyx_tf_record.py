@@ -113,8 +113,8 @@ def main(_):
                 
                 for i in annotations:
                     # specify the image name
-                    img_name=imagepath.split('\\')[-1]+'_'+annotations[i]['name'] # for viewnyx part1
-                    #img_name=annotations[i]['name'] # for viewnyx part 2
+                    #img_name=imagepath.split('\\')[-1]+'_'+annotations[i]['name'] # for viewnyx part1
+                    img_name=annotations[i]['name'] # for viewnyx part 2 and also all json file from VIVA annotator
                     
                     tf_example=CreateTFExample(imagepath,img_name,annotations[i])
                     writer = tf.python_io.TFRecordWriter(os.path.join(imagepath,img_name.replace('.jpg','.records')))
