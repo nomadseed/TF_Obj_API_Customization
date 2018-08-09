@@ -8,6 +8,8 @@ converting all the json benchmark into a single record file
 args:
     file_path: image path, each time specify a folder corresponding with the 
         annotation,also the path to save the tfrecord file
+    folder_number: how many folders do you want to process
+    json_label: specify the json file with some label in their name
 
 Example usage:
     python create_viewnyx_tf_record.py 
@@ -106,13 +108,30 @@ if __name__ == '__main__':
     parser.add_argument('--tfrecord_name', type=str, 
                         default='train.record', 
                         help="select the file path for image folders")
+    parser.add_argument('--folder_number',type=int, default=2,
+                        help='set how many folders will be processed')
+    parser.add_argument('--json_label',type=str, default='full',
+                        help='use part of the name to specify the json file to be processed')
     
     args = parser.parse_args()
     filepath=args.file_path
     tfrecordname=args.tfrecord_name
     folderdict=os.listdir(filepath)
+    jsonlabel=args.json_label
+    foldernumber=args.folder_number
+    foldercount=0
     
     for folder in folderdict:
+        # skip the files, choose folders only
+        if '.' in folder:
+            continue 
+        
+        # for debug only, set the number of folders to be processed
+        if foldercount>=foldernumber:
+            break
+        else:
+            foldercount+=1
+            
         imagepath=os.path.join(filepath,folder)
         filedict=os.listdir(imagepath)
         
@@ -120,13 +139,13 @@ if __name__ == '__main__':
         writer = tf.python_io.TFRecordWriter(os.path.join(imagepath,tfrecordname))
         
         for jsonname in filedict:
-            if 'json' in jsonname and 'full' in jsonname:
+            if 'json' in jsonname and jsonlabel in jsonname:
                 annotations=json.load(open(os.path.join(imagepath,jsonname)))
                 
                 for i in annotations:
                     # specify the image name
-                    img_name=imagepath.split('\\')[-1]+'_'+annotations[i]['name'] # for viewnyx part1
-                    #img_name=annotations[i]['name'] # for viewnyx part 2
+                    #img_name=imagepath.split('\\')[-1]+'_'+annotations[i]['name'] # for viewnyx part1
+                    img_name=annotations[i]['name'] # for viewnyx part 2
                     
                     tf_example=CreateTFExample(imagepath,img_name,annotations[i])
                     
@@ -136,7 +155,7 @@ if __name__ == '__main__':
         writer.close()
                 
         
-        print('Successfully created the TFRecords: {}'.format(imagepath))
+        print('Successfully created the TFRecords: {}'.format(os.path.join(imagepath,tfrecordname)))
                     
     
 '''
