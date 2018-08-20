@@ -28,14 +28,25 @@ from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
 
 
+
+def GetClass(class_id):
+    """
+    given class id, get the class name
     
-# Helper code
-def load_image_into_numpy_array(image):
+    """
+    if class_id==1:
+        return 'car'
+    elif class_id<=0:
+        raise ValueError('class id cannot be 0 or float numbers')
+    else:
+        return None
+
+def loadImageInNpArray(image):
     # convert input image into h*w*3 in uint8 format, BGR color space
     (im_width, im_height) = image.size
     return np.array(image.getdata()).reshape((im_height, im_width, 3)).astype(np.uint8)
 
-def run_inference_for_single_image(image, graph):
+def detectSingleImage(image, graph):
     with graph.as_default():
         with tf.Session() as sess:
             # Get handles to input and output tensors
@@ -74,7 +85,7 @@ def run_inference_for_single_image(image, graph):
                 output_dict['detection_masks'] = output_dict['detection_masks'][0]
     return output_dict
 
-def detect_object_using_graph(detection_graph, category_index, testimgpath, 
+def detectMultipleImages(detection_graph, category_index, testimgpath, 
                               foldernumber, outputthresh, 
                               saveimgpath=''):
     '''
@@ -126,7 +137,7 @@ def detect_object_using_graph(detection_graph, category_index, testimgpath,
                         # the array based representation of the image will be used 
                         # later in order to prepare the
                         # result image with boxes and labels on it.
-                        image_np = load_image_into_numpy_array(image)
+                        image_np = loadImageInNpArray(image)
                         # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
                         # image_np_expanded = np.expand_dims(image_np, axis=0)
                         
@@ -166,7 +177,7 @@ def detect_object_using_graph(detection_graph, category_index, testimgpath,
                             output_dict['detection_masks'] = output_dict['detection_masks'][0]
                         
                         # save detection result (output_dict) into jsondict in 
-                        # the format of VIVA Anotator
+                        # the format of VIVA Annotator
                         
                         
                         # Visualization of the results of a detection.
@@ -182,7 +193,7 @@ def detect_object_using_graph(detection_graph, category_index, testimgpath,
                                     min_score_thresh=outputthresh,
                                     line_thickness=5)
                             cv2.imwrite(os.path.join(saveimgpath,imgname.replace('.','_detection.')),cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR))
-    return jsondict
+    return output_dict, jsondict
 
 if __name__=='__main__':
     # pass the parameters
@@ -198,12 +209,10 @@ if __name__=='__main__':
                         help='path to the images to be tested')
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=10,
+    parser.add_argument('--folder_number',type=int, default=1,
                         help='set how many folders will be processed')
     parser.add_argument('--saveimg_path', type=str, 
                         default='viewnyx/savedimg',
-                        help='set how many images will be tested and saved as jpg')
-    parser.add_argument('--saveimg_number', type=int, default=5,
                         help='set how many images will be tested and saved as jpg')
     parser.add_argument('--output_thresh', type=float, default=0.5,
                         help='threshold of score for output the detected bbxs (default=0.5)')
@@ -216,8 +225,6 @@ if __name__=='__main__':
     foldernumber=args.folder_number
     foldercount=0
     saveimgpath=args.saveimg_path
-    saveimgnum=args.saveimg_number
-    saveimgcount=0
     outputthresh=args.output_thresh
         
     IMAGE_SIZE = (12, 8)# Size, in inches, of the output images.
@@ -246,7 +253,7 @@ if __name__=='__main__':
     
     
     # detection by function
-    detect_object_using_graph(detection_graph, 
+    output_dict, jsondict=detectMultipleImages(detection_graph, 
                               category_index, 
                               testimgpath, 
                               foldernumber,  
