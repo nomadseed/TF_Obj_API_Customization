@@ -29,7 +29,7 @@ from object_detection.utils import visualization_utils as vis_util
 
 
 
-def GetClass(class_id):
+def getClass(class_id):
     """
     given class id, get the class name
     
@@ -40,6 +40,40 @@ def GetClass(class_id):
         raise ValueError('class id cannot be 0 or float numbers')
     else:
         return None
+
+def carClassifier(x,y,width,height,threshold=0.2, strip_x1=305,strip_x2=335):
+    """
+    input the information of bounding box (topleft, bottomright), get the possible
+    category of the detected object. the method used here could be some meta-algorithm
+    like SVM or Decision Tree.
+    
+    categories using: 'leading','sideways'
+    
+    threshold is the overlapping area of bbx and vertical strip, divided by overlapping 
+    area between vertical strip and horizontal extension of bbx
+    
+    if the overlapping percentage is above threshold, return 'leading', else 
+    return 'sideways'
+    
+    """
+    
+    x1=x
+    x2=x+width
+    category=''
+    if threshold<=0 or threshold>1:
+        threshold=0.5
+    
+    if x1>strip_x1 and x2<strip_x2:
+        category='leading'
+    elif x2-strip_x1>(strip_x2-strip_x1)*threshold and x1-strip_x2<-(strip_x2-strip_x1)*threshold:
+        category='leading'
+    else:
+        category='sideways'
+    
+    return category
+
+def returnbottomy(bbx):
+    return bbx['y']+bbx['height']
 
 def loadImageInNpArray(image):
     # convert input image into h*w*3 in uint8 format, BGR color space
@@ -86,8 +120,7 @@ def detectSingleImage(image, graph):
     return output_dict
 
 def detectMultipleImages(detection_graph, category_index, testimgpath, 
-                              foldernumber, outputthresh, 
-                              saveimgpath=''):
+                              foldernumber, outputthresh, saveimg_flag=True):
     '''
     load the frozen graph (model) and run detection among all the images
     
@@ -96,21 +129,17 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
             are considered as default
         foldernumber: how many subfolders do you want to test
         detection_graph: the loaded frozen graph
-        saveimgpath: path to save detection images, not save any image if not
-            provided
         category_index: index to convert category labels into numbers
         outputthresh
+        saveimg_flag: if ture, save detection results under subfolder 'leadingdetect'
     
     output:
         jsondict: save all the detections into a json file in VIVA annotator format
     '''
     # constants and paths
-    jsondict={}
+
     foldercount=0
     
-    if saveimgpath!='':
-        if not os.path.exists(saveimgpath):
-            os.makedirs(saveimgpath)
     # initialize the graph once for all
     with detection_graph.as_default():
         with tf.Session() as sess:
@@ -127,13 +156,21 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                     break
                 else:
                     foldercount+=1
-                    
+                
+                # show folder name and create save path
                 imagepath=os.path.join(testimgpath,folder)
+                print('processing folder:',imagepath)
+                if saveimg_flag:
+                    savepath=os.path.join(testimgpath,folder,'leadingdetect')
+                    if not os.path.exists(savepath):
+                        os.makedirs(savepath)
+                
                 filedict=os.listdir(imagepath)
-                    
-                for imgname in filedict:
-                    if 'jpg' in imgname or 'png' in imgname:
-                        image = Image.open(os.path.join(imagepath,imgname))
+                annotationdict={} # save all detection result into json file
+                
+                for imagename in filedict:
+                    if 'jpg' in imagename or 'png' in imagename:
+                        image = Image.open(os.path.join(imagepath,imagename))
                         # the array based representation of the image will be used 
                         # later in order to prepare the
                         # result image with boxes and labels on it.
@@ -176,24 +213,56 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                         if 'detection_masks' in output_dict:
                             output_dict['detection_masks'] = output_dict['detection_masks'][0]
                         
-                        # save detection result (output_dict) into jsondict in 
-                        # the format of VIVA Annotator
+                        ########### save detection result (output_dict) ############
+                        ###### into jsondict in the format of VIVA Annotation ######
+                        annotationdict[imagename]={}
+                        annotationdict[imagename]['name']=imagename
+                        (im_width, im_height) = image.size
+                        annotationdict[imagename]['width']=im_width
+                        annotationdict[imagename]['height']=im_height
+                        annotationdict[imagename]['annotations']=[]
                         
+                        for i in range(output_dict['num_detections']):
+                            if output_dict['detection_scores'][i] < outputthresh:
+                                continue
+                            else:
+                                annodict={}
+                                annodict['id']=i
+                                annodict['shape']=['Box',1]
+                                annodict['label']=getClass(output_dict['detection_classes'][i])
+                                ymin,xmin,ymax,xmax=output_dict['detection_boxes'][i]
+                                annodict['x']=int(xmin*im_width)
+                                annodict['y']=int(ymin*im_height)
+                                annodict['width']=int((xmax-xmin)*im_width)
+                                annodict['height']=int((ymax-ymin)*im_height)
+                                annodict['category']=carClassifier(annodict['x'],annodict['y'],annodict['width'],annodict['height'])
+                                
+                                annotationdict[imagename]['annotations'].append(annodict)
                         
-                        # Visualization of the results of a detection.
-                        if saveimgpath!='':
-                            vis_util.visualize_boxes_and_labels_on_image_array(
-                                    image_np,
-                                    output_dict['detection_boxes'],
-                                    output_dict['detection_classes'],
-                                    output_dict['detection_scores'],
-                                    category_index,
-                                    instance_masks=output_dict.get('detection_masks'),
-                                    use_normalized_coordinates=True,
-                                    min_score_thresh=outputthresh,
-                                    line_thickness=5)
-                            cv2.imwrite(os.path.join(saveimgpath,imgname.replace('.','_detection.')),cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR))
-    return output_dict, jsondict
+                        # loop through all bbx with category 'leading', draw the nearest one in red bbx
+                        annotationdict[imagename]['annotations'].sort(key=returnbottomy,reverse=True)
+                        leadingflag=True
+                        if saveimg_flag:
+                            img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+                            for i in range(len(annotationdict[imagename]['annotations'])):
+                                tl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y'])
+                                br=(annotationdict[imagename]['annotations'][i]['x']+annotationdict[imagename]['annotations'][i]['width'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height'])
+                                if leadingflag and annotationdict[imagename]['annotations'][i]['category']=='leading':
+                                    leadingflag=False
+                                    img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+                                    #cv2.putText(img, 'leading', )
+                                else:
+                                    # caution!!! this step will change the annotation result!!!
+                                    annotationdict[imagename]['annotations'][i]['category']='sideways'
+                                    img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
+        
+                            cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
+                
+                # after done save all the annotation into json file, save the file
+                with open(os.path.join(imagepath,'detection_'+folder+'.json'),'w') as savefile:
+                    savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
+                    
+    return output_dict, annotationdict
 
 if __name__=='__main__':
     # pass the parameters
@@ -205,16 +274,16 @@ if __name__=='__main__':
                         default='viewnyx/data/class_labels.pbtxt', 
                         help="select the file path for class labels")
     parser.add_argument('--testimg_path',type=str,
-                        default='testframes',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/FrameImages',
                         help='path to the images to be tested')
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=1,
+    parser.add_argument('--folder_number',type=int, default=20,
                         help='set how many folders will be processed')
-    parser.add_argument('--saveimg_path', type=str, 
-                        default='viewnyx/savedimg',
-                        help='set how many images will be tested and saved as jpg')
-    parser.add_argument('--output_thresh', type=float, default=0.5,
+    parser.add_argument('--saveimg_flag', type=bool, 
+                        default=True,
+                        help="flag for saving detection result of not, default as True")
+    parser.add_argument('--output_thresh', type=float, default=0.2,
                         help='threshold of score for output the detected bbxs (default=0.5)')
     args = parser.parse_args()
     
@@ -224,7 +293,7 @@ if __name__=='__main__':
     testimgpath = args.testimg_path
     foldernumber=args.folder_number
     foldercount=0
-    saveimgpath=args.saveimg_path
+    saveflag=args.saveimg_flag
     outputthresh=args.output_thresh
         
     IMAGE_SIZE = (12, 8)# Size, in inches, of the output images.
@@ -258,7 +327,7 @@ if __name__=='__main__':
                               testimgpath, 
                               foldernumber,  
                               outputthresh, 
-                              saveimgpath)
+                              saveflag)
 
         
 ''' End of File '''
