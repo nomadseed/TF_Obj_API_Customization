@@ -8,6 +8,15 @@ args:
     ckpt_path: select the file path for ckpt folder
     label_path: select the file path for class labels
     testimg_path: path to the images to be tested
+    class_number: set number of classes default=1
+    folder_number:set how many folders will be processed,default=20
+    saveimg_flag: flag for saving detection result of not, default as True
+    output_thresh: threshold of score for output the detected bbxs, default=0.3
+
+usage example:
+    python3 model_performance.py --testimg_path YOUR/IMG/PATH 
+        --output_thresh 0.3
+    
 
 @author: Wen Wen
 """
@@ -18,6 +27,7 @@ import numpy as np
 import tensorflow as tf
 import argparse
 import json
+import time
 
 from matplotlib import pyplot as plt
 from PIL import Image
@@ -62,7 +72,6 @@ def carClassifier(x,y,width,height,threshold=0.2, strip_x1=305,strip_x2=335):
     category=''
     if threshold<=0 or threshold>1:
         threshold=0.5
-    
     if x1>strip_x1 and x2<strip_x2:
         category='leading'
     elif x2-strip_x1>(strip_x2-strip_x1)*threshold and x1-strip_x2<-(strip_x2-strip_x1)*threshold:
@@ -244,17 +253,20 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                         leadingflag=True
                         if saveimg_flag:
                             img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+                            font=cv2.FONT_HERSHEY_SIMPLEX
+                            linetype=cv2.LINE_AA
                             for i in range(len(annotationdict[imagename]['annotations'])):
                                 tl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y'])
                                 br=(annotationdict[imagename]['annotations'][i]['x']+annotationdict[imagename]['annotations'][i]['width'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height'])
                                 if leadingflag and annotationdict[imagename]['annotations'][i]['category']=='leading':
                                     leadingflag=False
                                     img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
-                                    #cv2.putText(img, 'leading', )
+                                    #cv2.putText(img, 'leading', tl, font, 1, (0,0,255), 1, lineType=linetype)
                                 else:
                                     # caution!!! this step will change the annotation result!!!
                                     annotationdict[imagename]['annotations'][i]['category']='sideways'
                                     img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
+                                    #cv2.putText(img, 'sideways', tl, font, 1, (0,255,0), 1, lineType=linetype)
         
                             cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
                 
@@ -280,11 +292,10 @@ if __name__=='__main__':
                         help="set number of classes (default as 1)")
     parser.add_argument('--folder_number',type=int, default=20,
                         help='set how many folders will be processed')
-    parser.add_argument('--saveimg_flag', type=bool, 
-                        default=True,
+    parser.add_argument('--saveimg_flag', type=bool, default=True,
                         help="flag for saving detection result of not, default as True")
-    parser.add_argument('--output_thresh', type=float, default=0.2,
-                        help='threshold of score for output the detected bbxs (default=0.5)')
+    parser.add_argument('--output_thresh', type=float, default=0.3,
+                        help='threshold of score for output the detected bbxs (default=0.3)')
     args = parser.parse_args()
     
     ckptpath = args.ckpt_path
@@ -322,12 +333,14 @@ if __name__=='__main__':
     
     
     # detection by function
+    starttime=time.time()
     output_dict, jsondict=detectMultipleImages(detection_graph, 
                               category_index, 
                               testimgpath, 
                               foldernumber,  
                               outputthresh, 
                               saveflag)
-
+    endtime=time.time()
+    print('\n processing finished, total time:{} s'.format(endtime-starttime))
         
 ''' End of File '''
