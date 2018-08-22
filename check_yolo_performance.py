@@ -144,14 +144,16 @@ if __name__=='__main__':
     parser.add_argument('--file_path', type=str, 
                         default='FrameImages/', 
                         help="File path of input data")
+    parser.add_argument('--model_name',type=str,default='SSD+MobileNet ',
+                        help='model name for charts')
     
     args = parser.parse_args()
     
     filepath=args.file_path
     folderdict=os.listdir(filepath)
-    
+    modelname=args.model_name
     totalperformance={}
-    threshlist=[0.001,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,
+    threshlist=[0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,
                 0.5,0.55,0.6,0.65,0.7,0.75,0.8,0.85,0.9,0.95,0.999]
     precision_overall_list=[]
     precision_leading_list=[]
@@ -173,7 +175,7 @@ if __name__=='__main__':
                 continue   
             else:
                 benchmark=json.load(open(jsonpath+'annotationfull_'+foldername+'.json'))
-                detected=json.load(open(jsonpath+'annotation_'+foldername+'.json'))
+                detected=json.load(open(jsonpath+'detection_'+foldername+'.json'))
         
             for imgname in detected:
                 # if not detected
@@ -183,10 +185,10 @@ if __name__=='__main__':
                     annos_detect=detected[imgname]['annotations']
             
                 # if no such a benchmark
-                if benchmark.get(imgname)==None:
+                if benchmark.get(imgname.split('_')[-1])==None:
                     annos_benchmark={}
                 else:
-                    annos_benchmark=benchmark[imgname]['annotations']
+                    annos_benchmark=benchmark[imgname.split('_')[-1]]['annotations']
             
                 # calculate performance
                 totalperformance[IOUthresh]=checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance[IOUthresh],IOUthresh)
@@ -229,6 +231,7 @@ if __name__=='__main__':
     
     
     # plot the precision, recall and MRs over all the cars and leading cars
+    
     partname=filepath.split('/')[-2]
     
     chartaxis = [0.0,1.0,0.0,1.0]
@@ -236,7 +239,7 @@ if __name__=='__main__':
     plt.axis(chartaxis)
     plt.plot(threshlist,precision_leading_list,'b.-',label='Leading')
     plt.plot(threshlist,precision_overall_list,'r.-',label='Overall')
-    plt.title(partname+' precision')
+    plt.title(modelname+partname+' precision')
     plt.xlabel('IoU threshold')
     plt.legend(loc=1)
     plt.savefig(filepath+'precision.png')
@@ -245,7 +248,7 @@ if __name__=='__main__':
     plt.axis(chartaxis)
     plt.plot(threshlist,recall_leading_list,'bs-', label='Leading')
     plt.plot(threshlist,recall_overall_list,'rs-',label='Overall')
-    plt.title(partname+' recall')
+    plt.title(modelname+partname+' recall')
     plt.xlabel('IoU threshold')
     plt.legend(loc=1)
     plt.savefig(filepath+'recall.png')
@@ -254,7 +257,7 @@ if __name__=='__main__':
     plt.axis(chartaxis)
     plt.plot(threshlist,MRs_leading_list,'b+-',label='Leading')
     plt.plot(threshlist,MRs_overall_list,'r+-',label='Overall')
-    plt.title(partname+' MRs')
+    plt.title(modelname+partname+' MRs')
     plt.xlabel('IoU threshold')
     plt.legend(loc=4)
     plt.savefig(filepath+'MRs.png')
