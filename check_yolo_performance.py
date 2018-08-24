@@ -92,8 +92,8 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
                 # true positive
                 if iou>=IOUthresh:
                     if annos_benchmark[i]['category'].lower()==annos_detect[j]['category'].lower():
-                        performance['leading']['tp']+=1
                         performance['overall']['tp']+=1
+                        performance['leading']['tp']+=1
                     else:
                         # tp for overall
                         performance['overall']['tp']+=1
@@ -142,9 +142,9 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, 
-                        default='FrameImages/', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/FrameImages', 
                         help="File path of input data")
-    parser.add_argument('--model_name',type=str,default='SSD+MobileNet ',
+    parser.add_argument('--model_name',type=str,default='YOLOv3 ',
                         help='model name for charts')
     
     args = parser.parse_args()
@@ -169,13 +169,13 @@ if __name__=='__main__':
                                             'overall':{'tp':0, 'fp':0, 'tn':0, 'fn':0}}
     
         for foldername in folderdict:
-            jsonpath=filepath+foldername+'/'
+            jsonpath=os.path.join(filepath,foldername)
             # load the json files
-            if not os.path.exists(jsonpath+'annotationfull_'+foldername+'.json'):
+            if not os.path.exists(os.path.join(jsonpath,'annotationfull_'+foldername+'.json')):
                 continue   
             else:
-                benchmark=json.load(open(jsonpath+'annotationfull_'+foldername+'.json'))
-                detected=json.load(open(jsonpath+'detection_'+foldername+'.json'))
+                benchmark=json.load(open(os.path.join(jsonpath,'annotationfull_'+foldername+'.json')))
+                detected=json.load(open(os.path.join(jsonpath,'annotation_'+foldername+'_YOLOv3.json')))
         
             for imgname in detected:
                 # if not detected
@@ -185,10 +185,10 @@ if __name__=='__main__':
                     annos_detect=detected[imgname]['annotations']
             
                 # if no such a benchmark
-                if benchmark.get(imgname.split('_')[-1])==None:
+                if benchmark.get(imgname)==None:
                     annos_benchmark={}
                 else:
-                    annos_benchmark=benchmark[imgname.split('_')[-1]]['annotations']
+                    annos_benchmark=benchmark[imgname]['annotations']
             
                 # calculate performance
                 totalperformance[IOUthresh]=checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance[IOUthresh],IOUthresh)
