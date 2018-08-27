@@ -142,9 +142,9 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/FrameImages', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/testframes', 
                         help="File path of input data")
-    parser.add_argument('--model_name',type=str,default='YOLOv3 ',
+    parser.add_argument('--model_name',type=str,default='SSDv2',
                         help='model name for charts')
     
     args = parser.parse_args()
@@ -175,7 +175,7 @@ if __name__=='__main__':
                 continue   
             else:
                 benchmark=json.load(open(os.path.join(jsonpath,'annotationfull_'+foldername+'.json')))
-                detected=json.load(open(os.path.join(jsonpath,'annotation_'+foldername+'_YOLOv3.json')))
+                detected=json.load(open(os.path.join(jsonpath,'annotation_'+foldername+'_'+modelname+'.json')))
         
             for imgname in detected:
                 # if not detected
@@ -226,41 +226,41 @@ if __name__=='__main__':
         '''
     
     # save the performance into json file
-    with open(filepath+'performance.json','w') as savefile:
+    with open(os.path.join(filepath,'performance.json'),'w') as savefile:
         savefile.write(json.dumps(totalperformance, sort_keys = True, indent = 4))
     
     
     # plot the precision, recall and MRs over all the cars and leading cars
     
-    partname=filepath.split('/')[-2]
+    partname=filepath.split('/')[-1]
     
     chartaxis = [0.0,1.0,0.0,1.0]
     
     plt.axis(chartaxis)
     plt.plot(threshlist,precision_leading_list,'b.-',label='Leading')
     plt.plot(threshlist,precision_overall_list,'r.-',label='Overall')
-    plt.title(modelname+partname+' precision')
+    plt.title(modelname+' '+partname+' precision')
     plt.xlabel('IoU threshold')
     plt.legend(loc=1)
-    plt.savefig(filepath+'precision.png')
+    plt.savefig(os.path.join(filepath,'precision.png'))
     plt.show()
     
     plt.axis(chartaxis)
     plt.plot(threshlist,recall_leading_list,'bs-', label='Leading')
     plt.plot(threshlist,recall_overall_list,'rs-',label='Overall')
-    plt.title(modelname+partname+' recall')
+    plt.title(modelname+' '+partname+' recall')
     plt.xlabel('IoU threshold')
     plt.legend(loc=1)
-    plt.savefig(filepath+'recall.png')
+    plt.savefig(os.path.join(filepath,'recall.png'))
     plt.show()
     
     plt.axis(chartaxis)
     plt.plot(threshlist,MRs_leading_list,'b+-',label='Leading')
     plt.plot(threshlist,MRs_overall_list,'r+-',label='Overall')
-    plt.title(modelname+partname+' MRs')
+    plt.title(modelname+' '+partname+' MRs')
     plt.xlabel('IoU threshold')
     plt.legend(loc=4)
-    plt.savefig(filepath+'MRs.png')
+    plt.savefig(os.path.join(filepath,'MRs.png'))
     plt.show()
     
     
