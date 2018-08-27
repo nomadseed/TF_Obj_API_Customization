@@ -92,8 +92,10 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
                 # true positive
                 if iou>=IOUthresh:
                     if annos_benchmark[i]['category'].lower()==annos_detect[j]['category'].lower():
-                        performance['overall']['tp']+=1
-                        performance['leading']['tp']+=1
+                        performance['overall']['tp']+=1 # tn for leading
+                        if annos_detect[j]['category'].lower()=='leading':
+                            performance['leading']['tp']+=1
+                        
                     else:
                         # tp for overall
                         performance['overall']['tp']+=1
