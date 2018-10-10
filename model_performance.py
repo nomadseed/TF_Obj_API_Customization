@@ -37,14 +37,15 @@ from object_detection.utils import ops as utils_ops
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
 
-
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def getClass(class_id):
     """
     given class id, get the class name
     
     """
-    if class_id==1:
+    if class_id==1: # 1 for car in viewnyx dataset trained model, 3 for coco
         return 'car'
     elif class_id<=0:
         raise ValueError('class id cannot be 0 or float numbers')
@@ -179,6 +180,9 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                 
                 for imagename in filedict:
                     if 'jpg' in imagename or 'png' in imagename:
+                        image = cv2.imread(os.path.join(imagepath,imagename))
+                        if image is None:
+                            continue
                         image = Image.open(os.path.join(imagepath,imagename))
                         # the array based representation of the image will be used 
                         # later in order to prepare the
@@ -245,6 +249,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                 annodict['width']=int((xmax-xmin)*im_width)
                                 annodict['height']=int((ymax-ymin)*im_height)
                                 annodict['category']=carClassifier(annodict['x'],annodict['y'],annodict['width'],annodict['height'])
+                                #annodict['score']=int(output_dict['detection_scores'][i]*100)
                                 
                                 annotationdict[imagename]['annotations'].append(annodict)
                         
@@ -271,28 +276,29 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                             cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
                 
                 # after done save all the annotation into json file, save the file
-                with open(os.path.join(imagepath,'detection_'+folder+'.json'),'w') as savefile:
+                with open(os.path.join(imagepath,'annotation_'+folder+'_detection.json'),'w') as savefile:
                     savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
                     
     return output_dict, annotationdict
 
 if __name__=='__main__':
     # pass the parameters
+    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/FrameImages
     parser=argparse.ArgumentParser()
     parser.add_argument('--ckpt_path', type=str, 
-                        default='viewnyx/ckpt_ssd_v2/export/frozen_inference_graph.pb', 
+                        default='/home/YOURPATH/frozen_inference_graph.pb', 
                         help="select the file path for ckpt folder")
     parser.add_argument('--label_path', type=str, 
-                        default='viewnyx/data/class_labels.pbtxt', 
+                        default='/home/YOURPATH/classlabel.pbtxt', 
                         help="select the file path for class labels")
     parser.add_argument('--testimg_path',type=str,
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/FrameImages',
+                        default='/home/YOURPATH/testimages',
                         help='path to the images to be tested')
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=20,
+    parser.add_argument('--folder_number',type=int, default=400,
                         help='set how many folders will be processed')
-    parser.add_argument('--saveimg_flag', type=bool, default=True,
+    parser.add_argument('--saveimg_flag', type=bool, default=False,
                         help="flag for saving detection result of not, default as True")
     parser.add_argument('--output_thresh', type=float, default=0.3,
                         help='threshold of score for output the detected bbxs (default=0.3)')
