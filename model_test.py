@@ -158,6 +158,8 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
     # constants and paths
 
     foldercount=0
+    filecount=-5
+    sumtime=0
     
     # initialize the graph once for all
     with detection_graph.as_default():
@@ -193,6 +195,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                         if image is None:
                             continue
                         image = Image.open(os.path.join(imagepath,imagename))
+                        filecount+=1
                         # the array based representation of the image will be used 
                         # later in order to prepare the
                         # result image with boxes and labels on it.
@@ -226,7 +229,14 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                             tensor_dict['detection_masks'] = tf.expand_dims(detection_masks_reframed, 0)
                         image_tensor = tf.get_default_graph().get_tensor_by_name('image_tensor:0')
                         # Run inference
+                        starttime=time.time()
                         output_dict = sess.run(tensor_dict,feed_dict={image_tensor: np.expand_dims(image_np, 0)})
+                        detect_time=time.time()-starttime
+                        if filecount>0: # the first 5 images won't be counted for detection time
+                            sumtime+=detect_time
+                            print('average detection time is {} s'.format(sumtime/filecount))
+                        
+                        
                         # all outputs are float32 numpy arrays, so convert types as appropriate
                         output_dict['num_detections'] = int(output_dict['num_detections'][0])
                         output_dict['detection_classes'] = output_dict['detection_classes'][0].astype(np.uint8)
@@ -290,7 +300,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                 with open(os.path.join(imagepath,'annotation_'+folder+'_detection.json'),'w') as savefile:
                     savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
                     
-    return output_dict, annotationdict
+    return output_dict, annotationdict, sumtime/filecount
 
 if __name__=='__main__':
     # pass the parameters
@@ -351,7 +361,7 @@ if __name__=='__main__':
     
     # detection by function
     starttime=time.time()
-    output_dict, jsondict=detectMultipleImages(detection_graph, 
+    output_dict, jsondict, average_detection_time =detectMultipleImages(detection_graph, 
                               category_index=category_index, 
                               testimgpath=testimgpath, 
                               foldernumber=foldernumber,  
