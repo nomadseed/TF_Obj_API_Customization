@@ -297,7 +297,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                             cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
                 
                 # after done save all the annotation into json file, save the file
-                with open(os.path.join(imagepath,'annotation_'+folder+'_detection.json'),'w') as savefile:
+                with open(os.path.join(testimgpath,'annotation_'+folder+'_detection.json'),'w') as savefile:
                     savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
                     
     return output_dict, annotationdict, sumtime/filecount
@@ -313,11 +313,11 @@ if __name__=='__main__':
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/COCO/mscoco_label_map.pbtxt', 
                         help="select the file path for class labels")
     parser.add_argument('--testimg_path',type=str,
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part2_images',
                         help='path to the images to be tested')
-    parser.add_argument('--class_number', type=int, default=8,
+    parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=10,
+    parser.add_argument('--folder_number',type=int, default=100,
                         help='set how many folders will be processed')
     parser.add_argument('--saveimg_flag', type=bool, default=False,
                         help="flag for saving detection result of not, default as True")
