@@ -234,7 +234,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                         detect_time=time.time()-starttime
                         if filecount>0: # the first 5 images won't be counted for detection time
                             sumtime+=detect_time
-                            print('average detection time is {} s'.format(sumtime/filecount))
+                            #print('average detection time is {} s'.format(sumtime/filecount))
                         
                         
                         # all outputs are float32 numpy arrays, so convert types as appropriate
@@ -370,5 +370,6 @@ if __name__=='__main__':
                               max_class=classnumber)
     endtime=time.time()
     print('\n processing finished, total time:{} s'.format(endtime-starttime))
+    print('average detection time is {} s per frame'.format(average_detection_time))
         
 ''' End of File '''
