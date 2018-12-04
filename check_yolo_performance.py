@@ -148,15 +148,15 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/Faster-RCNN inception ResNet/', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/ssd_mobilenet_v2_300_bdd_autoratio/', 
                         help="File path of input data")
-    parser.add_argument('--model_name',type=str,default='Faster-RCNN Inception ResNet',
+    parser.add_argument('--model_name',type=str,default='SSD Mobilenet 300 with autoratio',
                         help='model name for charts')
     parser.add_argument('--detected_path',type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/Faster-RCNN inception ResNet/annotation_val_detection.json',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/ssd_mobilenet_v2_300_bdd_autoratio/annotation_val_detection.json',
                         help='path of detected result, if "none", search the annotation files under file_path')
     parser.add_argument('--benchmark_path',type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/labels/bdd100k_labels_images_val_VIVA_format.json',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/labels/bdd100k_labels_images_val_VIVA_format_crop.json',
                         help='path of benchmark path, if "none", search the annotation files under file_path')
     
     
@@ -220,10 +220,10 @@ if __name__=='__main__':
                     annos_detect=detected[imgname]['annotations']
             
                 # if no such a benchmark
-                if benchmark.get(imgname.split('_')[-1])==None:
+                if benchmark.get(imgname)==None:
                     annos_benchmark={}
                 else:
-                    annos_benchmark=benchmark[imgname.split('_')[-1]]['annotations']
+                    annos_benchmark=benchmark[imgname]['annotations']
             
                 # calculate performance
                 totalperformance[IOUthresh]=checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance[IOUthresh],IOUthresh)
@@ -241,7 +241,11 @@ if __name__=='__main__':
             recall_leading=totalperformance[IOUthresh]['leading']['tp']/(totalperformance[IOUthresh]['leading']['tp']+totalperformance[IOUthresh]['leading']['fn'])
         recall_leading_list.append(recall_leading)
         
-        recall_overall=totalperformance[IOUthresh]['overall']['tp']/(totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fn'])
+        if (totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fn'])==0:
+            print('tp+fn=0, no overall label in benchmark')
+            recall_overall=0
+        else:
+            recall_overall=totalperformance[IOUthresh]['overall']['tp']/(totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fn'])
         recall_overall_list.append(recall_overall)
         
         # save all precision and recall
