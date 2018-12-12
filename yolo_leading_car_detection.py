@@ -16,6 +16,9 @@ import time
 from darkflow.net.build import TFNet
 import json
 
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 def classifier(x,y,width,height,threshold=0.2, strip_x1=305,strip_x2=335):
     """
     input the information of bounding box (topleft, bottomright), get the possible
@@ -57,7 +60,7 @@ if __name__=='__main__':
     parser.add_argument('--file_path', type=str, 
                         default='test/leading_car/', 
                         help="File path of input data (default 'D:/Private Manager/Personal File/U of Ottawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/testframes/')")
-    parser.add_argument('--draw_image', type=bool, default=False, help="draw image for debug (default False)")
+    parser.add_argument('--draw_image', type=bool, default=True, help="draw image for debug (default False)")
     
     args = parser.parse_args()
     
@@ -80,11 +83,15 @@ if __name__=='__main__':
     
     # begin auto-labelling
     starttime=time.time()
+    sumtime=0
+    imgcount=0
     for i in folderdict:
-        imagepath=filepath+i+'/'
+        if '.' in i:
+            continue
+        imagepath=os.path.join(filepath,i)
         print('processing folder:',imagepath)
-        if not os.path.exists(imagepath+'leadingdetect/'):
-            os.makedirs(imagepath+'leadingdetect/')
+        if not os.path.exists(os.path.join(imagepath,'leadingdetect')):
+            os.makedirs(os.path.join(imagepath,'leadingdetect'))
             
         imagedict=os.listdir(imagepath)
         #np.random.shuffle(imagedict)
@@ -94,14 +101,20 @@ if __name__=='__main__':
         annotationdict={}
         for imagename in imagedict:
             if 'leading' not in imagename and ('png' in imagename or 'jpg' in imagename):
-                img=cv2.imread(imagepath+imagename)
+                img=cv2.imread(os.path.join(imagepath,imagename))
                 
                 # skip the broken images
                 if img is None:
-                    del img
                     continue
                 #img=cv2.resize(img,(100,50))
+                detect_begin=time.time()
                 result.append(tfnet.return_predict(img))
+                detect_time=time.time()-detect_begin
+                imgcount+=1
+                if imgcount>5:
+                    sumtime+=detect_time
+                
+                
                 if len(result[0])==0:
                     # no positive detection, move the image into new folder
                     annotationdict[imagename]={}
@@ -133,20 +146,22 @@ if __name__=='__main__':
                             
                             annotationdict[imagename]['annotations'].append(annodict)
                     
-                    # loop through all bbx with category 'leading', draw the nearest one in red bbx
-                    bbxlist=annotationdict[imagename]['annotations']
-                    bbxlist.sort(key=returnbottomy,reverse=True)
-                    leadingflag=True
-                    for bbx in bbxlist:
-                        tl=(bbx['x'],bbx['y'])
-                        br=(bbx['x']+bbx['width'],bbx['y']+bbx['height'])
-                        if leadingflag and bbx['category']=='leading':
-                            leadingflag=False
-                            img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
-                        else:
-                            img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
-
-                    cv2.imwrite(imagepath+'leadingdetect/'+imagename.split('.')[0]+'_leadingdetect.jpg',img) # don't save it in png!!!
+                    if drawflag:
+                        # loop through all bbx with category 'leading', draw the nearest one in red bbx
+                        annotationdict[imagename]['annotations'].sort(key=returnbottomy,reverse=True)
+                        leadingflag=True
+                        for i in range(len(annotationdict[imagename]['annotations'])):
+                            tl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y'])
+                            br=(annotationdict[imagename]['annotations'][i]['x']+annotationdict[imagename]['annotations'][i]['width'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height'])
+                            if leadingflag and annotationdict[imagename]['annotations'][i]['category']=='leading':
+                                leadingflag=False
+                                img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+                            else:
+                                # caution!!! this step will change the annotation result!!!
+                                annotationdict[imagename]['annotations'][i]['category']='sideways'
+                                img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
+    
+                        cv2.imwrite(os.path.join(imagepath,'leadingdetect',imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
 
                 del img
             # clear the result list for current image
@@ -154,11 +169,14 @@ if __name__=='__main__':
 
             
         # after done save all the annotation into json file, save the file
-        with open(imagepath+'annotation_'+imagepath.split('/')[-2]+'.json','w') as savefile:
+        with open(os.path.join(imagepath,'annotation_'+imagepath.split('/')[-2]+'.json'),'w') as savefile:
             savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
         
     # show the total time spent
     endtime=time.time()
-    print('total time:'+str(endtime-starttime)+' seconds')
+    print('total time: {} seconds'.format(endtime-starttime))
+    avg_detect_time=sumtime/(imgcount-5)
+    print('total images: {}'.format(imgcount))
+    print('average detection time: {} seconds'.format(avg_detect_time))
     
 """ End of the file """
