@@ -148,12 +148,12 @@ def checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance,IOUth
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/ssd_mobilenet_v2_300_bdd_autoratio/', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/yolov3_mobilenet/', 
                         help="File path of input data")
-    parser.add_argument('--model_name',type=str,default='SSD Mobilenet 300 with autoratio',
+    parser.add_argument('--model_name',type=str,default='YOLOv3 Mobilenet',
                         help='model name for charts')
     parser.add_argument('--detected_path',type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/ssd_mobilenet_v2_300_bdd_autoratio/annotation_val_detection.json',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/yolov3_mobilenet/annotation_val_YOLOv3.json',
                         help='path of detected result, if "none", search the annotation files under file_path')
     parser.add_argument('--benchmark_path',type=str, 
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/labels/bdd100k_labels_images_val_VIVA_format_crop.json',
@@ -229,20 +229,29 @@ if __name__=='__main__':
                 totalperformance[IOUthresh]=checkSingleImage(imgname,annos_benchmark,annos_detect,totalperformance[IOUthresh],IOUthresh)
         
         # calculate precision, recall and missrate
-        precision_leading=totalperformance[IOUthresh]['leading']['tp']/(totalperformance[IOUthresh]['leading']['tp']+totalperformance[IOUthresh]['leading']['fp'])
-        precision_overall=totalperformance[IOUthresh]['overall']['tp']/(totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fp'])
+        if totalperformance[IOUthresh]['leading']['tp']+totalperformance[IOUthresh]['leading']['fp']==0:
+            print('tp+fp=0, no leading label in benchmark, pass precision of leading')
+            precision_leading=0
+        else:
+            precision_leading=totalperformance[IOUthresh]['leading']['tp']/(totalperformance[IOUthresh]['leading']['tp']+totalperformance[IOUthresh]['leading']['fp'])
         precision_leading_list.append(precision_leading)
+        
+        if totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fp']==0:
+            print('tp+fp=0, no overall label in benchmark, pass precision of overall')
+            precision_overall=0
+        else:
+            precision_overall=totalperformance[IOUthresh]['overall']['tp']/(totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fp'])
         precision_overall_list.append(precision_overall)        
         
         if totalperformance[IOUthresh]['leading']['tp']+totalperformance[IOUthresh]['leading']['fn']==0:
-            print('tp+fn=0, no leading label in benchmark')
+            print('tp+fn=0, no leading label in benchmark, pass recall of leading')
             recall_leading=0
         else:
             recall_leading=totalperformance[IOUthresh]['leading']['tp']/(totalperformance[IOUthresh]['leading']['tp']+totalperformance[IOUthresh]['leading']['fn'])
         recall_leading_list.append(recall_leading)
         
         if (totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fn'])==0:
-            print('tp+fn=0, no overall label in benchmark')
+            print('tp+fn=0, no overall label in benchmark, pass recall of overall')
             recall_overall=0
         else:
             recall_overall=totalperformance[IOUthresh]['overall']['tp']/(totalperformance[IOUthresh]['overall']['tp']+totalperformance[IOUthresh]['overall']['fn'])
