@@ -40,6 +40,22 @@ from object_detection.utils import visualization_utils as vis_util
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
+def calculate_trainable_variables():
+    total_parameters = 0
+    print('================= Trainable Variables =======================')
+    for variable in tf.trainable_variables():
+        # shape is an array of tf.Dimension
+        shape = variable.get_shape()
+        #print(shape)
+        #print(len(shape))
+        variable_parameters = 1
+        for dim in shape:
+            #print(dim)
+            variable_parameters *= dim.value
+        #print(variable_parameters)
+        total_parameters += variable_parameters
+    print('total trainable parameters: {}'.format(total_parameters))
+
 def getClass(class_id,category_index,max_class):
     """
     given class id, get the class name
@@ -59,7 +75,7 @@ def getClass(class_id,category_index,max_class):
         else:
             raise ValueError('class doesn\'t have a valid display name or binary name')
 
-def carClassifier(x,y,width,height,threshold=0.2, strip_x1=305,strip_x2=335):
+def carClassifier(x,y,width,height,threshold=0.2, strip_x1=305,strip_x2=335,y_roof=0):
     """
     input the information of bounding box (topleft, bottomright), get the possible
     category of the detected object. the method used here could be some meta-algorithm
@@ -80,6 +96,9 @@ def carClassifier(x,y,width,height,threshold=0.2, strip_x1=305,strip_x2=335):
     category=''
     if threshold<=0 or threshold>1:
         threshold=0.5
+    if y<y_roof:
+        category='sideways'
+        return category
     if x1>strip_x1 and x2<strip_x2:
         category='leading'
     elif x2-strip_x1>(strip_x2-strip_x1)*threshold and x1-strip_x2<-(strip_x2-strip_x1)*threshold:
@@ -137,8 +156,8 @@ def detectSingleImage(image, graph):
     return output_dict
 
 def detectMultipleImages(detection_graph, category_index, testimgpath, 
-                              foldernumber, outputthresh, saveimg_flag=True,
-                              max_class=8):
+                              foldernumber, outputthresh=0.5, saveimg_flag=True,
+                              max_class=8, dist_estimator=None):
     '''
     load the frozen graph (model) and run detection among all the images
     
@@ -164,7 +183,8 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
     # initialize the graph once for all
     with detection_graph.as_default():
         with tf.Session() as sess:
-    
+            # show the total trainable variables
+            calculate_trainable_variables()
     
             folderdict=os.listdir(testimgpath)
             for folder in folderdict:
@@ -270,13 +290,14 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                 annodict['width']=int((xmax-xmin)*im_width)
                                 annodict['height']=int((ymax-ymin)*im_height)
                                 annodict['category']=carClassifier(annodict['x'],annodict['y'],annodict['width'],annodict['height'])
-                                #annodict['score']=int(output_dict['detection_scores'][i]*100)
-
+                                annodict['score']=float(output_dict['detection_scores'][i])
+                                
                                 annotationdict[imagename]['annotations'].append(annodict)
                         
                         # loop through all bbx with category 'leading', draw the nearest one in red bbx
                         annotationdict[imagename]['annotations'].sort(key=returnbottomy,reverse=True)
-                        leadingflag=True
+                        leadingflag = True
+                        estimateflag= (dist_estimator!=None)
                         if saveimg_flag:
                             img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
                             font=cv2.FONT_HERSHEY_SIMPLEX
@@ -288,12 +309,17 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                     leadingflag=False
                                     img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
                                     #cv2.putText(img, 'leading', tl, font, 1, (0,0,255), 1, lineType=linetype)
+                                    if estimateflag:
+                                        bl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height']-4)
+                                        distance=dist_estimator.estimateDistance(width=annotationdict[imagename]['annotations'][i]['width'])
+                                        aspect_ratio=annotationdict[imagename]['annotations'][i]['width']/annotationdict[imagename]['annotations'][i]['height']
+                                        cv2.putText(img, 'w={:.0f} ar={:.2f} d={:.2f}'.format(annotationdict[imagename]['annotations'][i]['width'],aspect_ratio,distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
                                 else:
                                     # caution!!! this step will change the annotation result!!!
                                     annotationdict[imagename]['annotations'][i]['category']='sideways'
                                     img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
                                     #cv2.putText(img, 'sideways', tl, font, 1, (0,255,0), 1, lineType=linetype)
-        
+
                             cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
                 
                 # after done save all the annotation into json file, save the file
@@ -302,31 +328,102 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                     
     return output_dict, annotationdict, sumtime/filecount
 
+class DistEstimator():
+    """
+    estimate distance, all units are of milimeters and pixels
+    
+    """
+    def __init__(self, width_reference=1600):
+        # width_reference unit is milimeters
+        self.width_reference=width_reference
+        self.mapping=None
+        
+    def setWidthReference(self, width_reference):
+        self.width_reference=width_reference
+        
+    def loadMappingFunc(self, filepath=None):
+        """
+        load file from txt and save as array, which should return a Nx2 mat,
+        where the 1st column is img distance in pixels, the 2nd colume is 3D
+        distance in milimeters
+        
+        """
+        if filepath==None:
+            raise ValueError('invalid filepath for pixel-dist mapping function')
+        self.mapping=np.loadtxt(filepath,delimiter=';')
+        return self.mapping
+    
+    def estimateDistance(self, width):
+        if width==None or width=='null':
+            raise ValueError('invalid width value to calculate distance')
+        # calculate distance from mapping func
+        mapping=self.mapping
+        total=len(mapping[:,0])
+        i=int(total/2)
+        step=int(total/4)
+        last_i=0
+        while(i!=last_i):
+            #print(i)
+            last_i=i
+            if width>mapping[i,0]:
+                i-=step
+            else:
+                i+=step
+            step=int(step/2)
+        #print('width={},mapped_pel={}'.format(width,mapping[i,0]))
+        if i==total-1:
+            #width too small
+            low=int(i-1)
+            high=i
+        elif i==0:
+            #width too large
+            low=i
+            high=int(i+1)
+        else:
+            #regular case
+            if width>mapping[i,0]:
+                low=int(i-1)
+                high=i                    
+            else:
+                low=i
+                high=int(i+1)
+        # solve linear regression between (x1,y1) and (x2,y2)
+        x1=mapping[low,0]
+        y1=mapping[low,1]
+        x2=mapping[high,0]
+        y2=mapping[high,1]
+        return (y2-y1)/(x2-x1)*(width-x2)+y2
+            
 if __name__=='__main__':
     # pass the parameters
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/FrameImages
+    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes
     parser=argparse.ArgumentParser()
     parser.add_argument('--ckpt_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/pretrained/faster_rcnn_inception_resnet_v2_atrous_coco/frozen_inference_graph.pb', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/ckpt_ssd_opt_300_gt22/export/frozen_inference_graph.pb', 
                         help="select the file path for ckpt folder")
     parser.add_argument('--label_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/COCO/mscoco_label_map.pbtxt', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/data/class_labels.pbtxt', 
                         help="select the file path for class labels")
     parser.add_argument('--testimg_path',type=str,
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part2_images',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes',
                         help='path to the images to be tested')
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=100,
+    parser.add_argument('--folder_number',type=int, default=2,
                         help='set how many folders will be processed')
-    parser.add_argument('--saveimg_flag', type=bool, default=False,
+    parser.add_argument('--saveimg_flag', type=bool, default=True,
                         help="flag for saving detection result of not, default as True")
-    parser.add_argument('--output_thresh', type=float, default=0.3,
-                        help='threshold of score for output the detected bbxs (default=0.3)')
+    parser.add_argument('--output_thresh', type=float, default=0.22,
+                        help='threshold of score for output the detected bbxs (default=0.05)')
+    parser.add_argument('--cam_calibration_path',type=str,
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/cam_mapping_wen.txt',
+                        help='filepath of pixel-distance mapping, use None is not needed')
     args = parser.parse_args()
     
     ckptpath = args.ckpt_path
     labelpath = args.label_path
+    camcalpath = args.cam_calibration_path
     classnumber = args.class_number
     testimgpath = args.testimg_path
     foldernumber=args.folder_number
@@ -336,6 +433,12 @@ if __name__=='__main__':
         
     IMAGE_SIZE = (12, 8)# Size, in inches, of the output images.
     
+    if camcalpath!=None:
+        dist_estimator=DistEstimator()
+        dist_estimator.setWidthReference(1600)
+        mapping=dist_estimator.loadMappingFunc(filepath=camcalpath)
+        #result=dist_estimator.estimateDistance(120)
+
     # Load a (frozen) Tensorflow model into memory
     detection_graph = tf.Graph()
     with detection_graph.as_default():
@@ -367,9 +470,10 @@ if __name__=='__main__':
                               foldernumber=foldernumber,  
                               outputthresh=outputthresh, 
                               saveimg_flag=saveflag,
-                              max_class=classnumber)
+                              max_class=classnumber,
+                              dist_estimator=dist_estimator)
     endtime=time.time()
     print('\n processing finished, total time:{} s'.format(endtime-starttime))
     print('average detection time is {} s per frame'.format(average_detection_time))
-        
+
 ''' End of File '''
