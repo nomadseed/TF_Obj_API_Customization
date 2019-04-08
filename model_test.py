@@ -28,6 +28,7 @@ import tensorflow as tf
 import argparse
 import json
 import time
+import track_obj
 
 from matplotlib import pyplot as plt
 from PIL import Image
@@ -155,9 +156,89 @@ def detectSingleImage(image, graph):
                 output_dict['detection_masks'] = output_dict['detection_masks'][0]
     return output_dict
 
+def updateAnnotationDict(output_dict,annotationdict,imagename,im_width,im_height,
+                         max_class):
+    # all outputs are float32 numpy arrays, so convert types as appropriate
+    output_dict['num_detections'] = int(output_dict['num_detections'][0])
+    output_dict['detection_classes'] = output_dict['detection_classes'][0].astype(np.uint8)
+    output_dict['detection_boxes'] = output_dict['detection_boxes'][0]
+    output_dict['detection_scores'] = output_dict['detection_scores'][0]
+    if 'detection_masks' in output_dict:
+        output_dict['detection_masks'] = output_dict['detection_masks'][0]
+    ########### save detection result (output_dict) ############
+    ###### into jsondict in the format of VIVA Annotation ######
+    annotationdict[imagename]={}
+    annotationdict[imagename]['name']=imagename
+    annotationdict[imagename]['width']=im_width
+    annotationdict[imagename]['height']=im_height
+    annotationdict[imagename]['annotations']=[]
+    
+    for i in range(output_dict['num_detections']):
+        if output_dict['detection_scores'][i] < outputthresh:
+            continue
+        else:
+            annodict={}
+            annodict['id']=i
+            annodict['shape']=['Box',1]
+            annodict['label']=getClass(output_dict['detection_classes'][i],category_index,max_class)
+            if annodict['label']=='null':
+                continue
+            ymin,xmin,ymax,xmax=output_dict['detection_boxes'][i]
+            annodict['x']=int(xmin*im_width)
+            annodict['y']=int(ymin*im_height)
+            annodict['width']=int((xmax-xmin)*im_width)
+            annodict['height']=int((ymax-ymin)*im_height)
+            annodict['category']=carClassifier(annodict['x'],annodict['y'],annodict['width'],annodict['height'])
+            annodict['score']=float(output_dict['detection_scores'][i])
+            
+            annotationdict[imagename]['annotations'].append(annodict)    
+        
+    return annotationdict
+
+def keepOnlyOneLeading(annotationdict,imagename):
+    """
+    for all the vehicles considered as vehicle, keep only the nearest one,
+    and remark all the others as sideways.
+    note this is an top level strategy which is after the detection, and thus
+    doesn't interfere the detection result
+    
+    """    
+    annotationdict[imagename]['annotations'].sort(key=returnbottomy,reverse=True)
+    leadingflag = True
+    for i in range(len(annotationdict[imagename]['annotations'])):
+        if leadingflag and annotationdict[imagename]['annotations'][i]['category']=='leading':
+            leadingflag=False
+        else:
+            # caution!!! this step will change the annotation result!!!
+            annotationdict[imagename]['annotations'][i]['category']='sideways'
+    
+    return annotationdict
+
+def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
+                  dist_estimator=None):
+    img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+    font=cv2.FONT_HERSHEY_SIMPLEX
+    linetype=cv2.LINE_AA
+    for i in range(len(annotationdict[imagename]['annotations'])):
+        tl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y'])
+        br=(annotationdict[imagename]['annotations'][i]['x']+annotationdict[imagename]['annotations'][i]['width'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height'])
+        if annotationdict[imagename]['annotations'][i]['category']=='leading':
+            # draw leading car in red
+            img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+            #cv2.putText(img, 'leading', tl, font, 1, (0,0,255), 1, lineType=linetype)
+            if dist_estimator is not None:
+                bl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height']-4)
+                distance=dist_estimator.estimateDistance(width=annotationdict[imagename]['annotations'][i]['width'])
+                cv2.putText(img, 'd={:.2f}'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
+        elif drawside:
+            # draw sideway cars in green
+            img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
+
+    cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
+
 def detectMultipleImages(detection_graph, category_index, testimgpath, 
-                              foldernumber, outputthresh=0.5, saveimg_flag=True,
-                              max_class=8, dist_estimator=None):
+                         foldernumber, outputthresh=0.5, saveimg_flag=True,
+                         max_class=8, dist_estimator=None, use_tracking=False):
     '''
     load the frozen graph (model) and run detection among all the images
     
@@ -180,17 +261,30 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
     filecount=-5
     sumtime=0
     
+    if use_tracking:
+        objtracker=track_obj.ObjTracker()
+        objtracker.buildTracker()
+        maxtrack=10 # switch to detection when reach max track frame
+    
     # initialize the graph once for all
     with detection_graph.as_default():
-        with tf.Session() as sess:
-            # show the total trainable variables
-            calculate_trainable_variables()
-    
+        with tf.Session() as sess:            
+            # Get handles to input and output tensors
+            ops = tf.get_default_graph().get_operations()
+            all_tensor_names = {output.name for op in ops for output in op.outputs}
+            tensor_dict = {}
+            for key in ['num_detections', 'detection_boxes', 
+                        'detection_scores', 'detection_classes']:
+                tensor_name = key + ':0'
+                if tensor_name in all_tensor_names:
+                    tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(tensor_name)
+            image_tensor = tf.get_default_graph().get_tensor_by_name('image_tensor:0')
+            
             folderdict=os.listdir(testimgpath)
             for folder in folderdict:
                 # skip the files, choose folders only
                 if '.' in folder:
-                    continue 
+                    continue
                 
                 # for debug, set the number of folders to be processed
                 if foldercount>=foldernumber:
@@ -208,6 +302,8 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                 
                 filedict=os.listdir(imagepath)
                 annotationdict={} # save all detection result into json file
+                trackcount=0 # record how many frames used for tracking
+                solidtrack=False
                 
                 for imagename in filedict:
                     if 'jpg' in imagename or 'png' in imagename:
@@ -215,6 +311,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                         if image is None:
                             continue
                         image = Image.open(os.path.join(imagepath,imagename))
+                        (im_width, im_height) = image.size
                         filecount+=1
                         # the array based representation of the image will be used 
                         # later in order to prepare the
@@ -224,107 +321,51 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                         # image_np_expanded = np.expand_dims(image_np, axis=0)
                         
                         ##################### Actual detection ######################
-                        # Get handles to input and output tensors
-                        ops = tf.get_default_graph().get_operations()
-                        all_tensor_names = {output.name for op in ops for output in op.outputs}
-                        tensor_dict = {}
-                        for key in [
-                                'num_detections', 'detection_boxes', 'detection_scores',
-                                'detection_classes', 'detection_masks'
-                        ]:
-                            tensor_name = key + ':0'
-                            if tensor_name in all_tensor_names:
-                                tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(tensor_name)
-                        if 'detection_masks' in tensor_dict:
-                            # The following processing is only for single image
-                            detection_boxes = tf.squeeze(tensor_dict['detection_boxes'], [0])
-                            detection_masks = tf.squeeze(tensor_dict['detection_masks'], [0])
-                            # Reframe is required to translate mask from box coordinates to image coordinates and fit the image size.
-                            real_num_detection = tf.cast(tensor_dict['num_detections'][0], tf.int32)
-                            detection_boxes = tf.slice(detection_boxes, [0, 0], [real_num_detection, -1])
-                            detection_masks = tf.slice(detection_masks, [0, 0, 0], [real_num_detection, -1, -1])
-                            detection_masks_reframed = utils_ops.reframe_box_masks_to_image_masks(detection_masks, detection_boxes, image_np.shape[0], image_np.shape[1])
-                            detection_masks_reframed = tf.cast(tf.greater(detection_masks_reframed, 0.5), tf.uint8)
-                            # Follow the convention by adding back the batch dimension
-                            tensor_dict['detection_masks'] = tf.expand_dims(detection_masks_reframed, 0)
-                        image_tensor = tf.get_default_graph().get_tensor_by_name('image_tensor:0')
-                        # Run inference
-                        starttime=time.time()
-                        output_dict = sess.run(tensor_dict,feed_dict={image_tensor: np.expand_dims(image_np, 0)})
-                        detect_time=time.time()-starttime
-                        if filecount>0: # the first 5 images won't be counted for detection time
-                            sumtime+=detect_time
-                            #print('average detection time is {} s'.format(sumtime/filecount))
-                        
-                        
-                        # all outputs are float32 numpy arrays, so convert types as appropriate
-                        output_dict['num_detections'] = int(output_dict['num_detections'][0])
-                        output_dict['detection_classes'] = output_dict['detection_classes'][0].astype(np.uint8)
-                        output_dict['detection_boxes'] = output_dict['detection_boxes'][0]
-                        output_dict['detection_scores'] = output_dict['detection_scores'][0]
-                        if 'detection_masks' in output_dict:
-                            output_dict['detection_masks'] = output_dict['detection_masks'][0]
-                        
-                        ########### save detection result (output_dict) ############
-                        ###### into jsondict in the format of VIVA Annotation ######
-                        annotationdict[imagename]={}
-                        annotationdict[imagename]['name']=imagename
-                        (im_width, im_height) = image.size
-                        annotationdict[imagename]['width']=im_width
-                        annotationdict[imagename]['height']=im_height
-                        annotationdict[imagename]['annotations']=[]
-                        
-                        for i in range(output_dict['num_detections']):
-                            if output_dict['detection_scores'][i] < outputthresh:
-                                continue
+                        if not use_tracking:
+                            # Run detection inference
+                            starttime=time.time()
+                            output_dict = sess.run(tensor_dict,feed_dict={image_tensor: np.expand_dims(image_np, 0)})
+                            detect_time=time.time()-starttime
+                            if filecount>0: # the first 5 images won't be counted for detection time
+                                sumtime+=detect_time
+                                #print('average detection time is {} s'.format(sumtime/filecount))
+                            
+                            annotationdict = updateAnnotationDict(output_dict,
+                                                annotationdict,imagename,
+                                                im_width,im_height,max_class)
+                            
+                            annotationdict = keepOnlyOneLeading(annotationdict,imagename)
+                            
+                            drawBBoxNSave(image_np,imagename,savepath,annotationdict,
+                                          drawside=True,dist_estimator=dist_estimator)
+                            
+                        else:
+                            # Run detection-tracking inference
+                            if solidtrack and trackcount%maxtrack!=0:
+                                # refresh tracker and do tracking
+                                # return solidtrack mark
+                                solidtrack=True
                             else:
-                                annodict={}
-                                annodict['id']=i
-                                annodict['shape']=['Box',1]
-                                annodict['label']=getClass(output_dict['detection_classes'][i],category_index,max_class)
-                                if annodict['label']=='null':
-                                    continue
-                                ymin,xmin,ymax,xmax=output_dict['detection_boxes'][i]
-                                annodict['x']=int(xmin*im_width)
-                                annodict['y']=int(ymin*im_height)
-                                annodict['width']=int((xmax-xmin)*im_width)
-                                annodict['height']=int((ymax-ymin)*im_height)
-                                annodict['category']=carClassifier(annodict['x'],annodict['y'],annodict['width'],annodict['height'])
-                                annodict['score']=float(output_dict['detection_scores'][i])
+                                # detection
+                                # get bbox of leading car
+                                # if has leading car:
+                                    #reture solidtrack mark
+                                    #trackcount=0
+                                starttime=time.time()
+                                output_dict = sess.run(tensor_dict,feed_dict={image_tensor: np.expand_dims(image_np, 0)})
+                                detect_time=time.time()-starttime
+                                if filecount>0: # the first 5 images won't be counted for detection time
+                                    sumtime+=detect_time
+                            
+                            # draw bbox and text and save img
                                 
-                                annotationdict[imagename]['annotations'].append(annodict)
-                        
-                        # loop through all bbx with category 'leading', draw the nearest one in red bbx
-                        annotationdict[imagename]['annotations'].sort(key=returnbottomy,reverse=True)
-                        leadingflag = True
-                        estimateflag= (dist_estimator!=None)
-                        if saveimg_flag:
-                            img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-                            font=cv2.FONT_HERSHEY_SIMPLEX
-                            linetype=cv2.LINE_AA
-                            for i in range(len(annotationdict[imagename]['annotations'])):
-                                tl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y'])
-                                br=(annotationdict[imagename]['annotations'][i]['x']+annotationdict[imagename]['annotations'][i]['width'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height'])
-                                if leadingflag and annotationdict[imagename]['annotations'][i]['category']=='leading':
-                                    leadingflag=False
-                                    img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
-                                    #cv2.putText(img, 'leading', tl, font, 1, (0,0,255), 1, lineType=linetype)
-                                    if estimateflag:
-                                        bl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height']-4)
-                                        distance=dist_estimator.estimateDistance(width=annotationdict[imagename]['annotations'][i]['width'])
-                                        aspect_ratio=annotationdict[imagename]['annotations'][i]['width']/annotationdict[imagename]['annotations'][i]['height']
-                                        cv2.putText(img, 'w={:.0f} ar={:.2f} d={:.2f}'.format(annotationdict[imagename]['annotations'][i]['width'],aspect_ratio,distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
-                                else:
-                                    # caution!!! this step will change the annotation result!!!
-                                    annotationdict[imagename]['annotations'][i]['category']='sideways'
-                                    img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
-                                    #cv2.putText(img, 'sideways', tl, font, 1, (0,255,0), 1, lineType=linetype)
-
-                            cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
-                
+                            
+                            
                 # after done save all the annotation into json file, save the file
-                with open(os.path.join(testimgpath,'annotation_'+folder+'_detection.json'),'w') as savefile:
-                    savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
+                if not use_tracking:
+                    # save annotation if not using tracking
+                    with open(os.path.join(testimgpath,'annotation_'+folder+'_detection.json'),'w') as savefile:
+                        savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
                     
     return output_dict, annotationdict, sumtime/filecount
 
@@ -400,7 +441,7 @@ if __name__=='__main__':
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes
     parser=argparse.ArgumentParser()
     parser.add_argument('--ckpt_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/ckpt_ssd_opt_300_gt22/export/frozen_inference_graph.pb', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/ckpt_ssd_opt_vnx_finetune/export/frozen_inference_graph.pb', 
                         help="select the file path for ckpt folder")
     parser.add_argument('--label_path', type=str, 
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/data/class_labels.pbtxt', 
@@ -410,14 +451,14 @@ if __name__=='__main__':
                         help='path to the images to be tested')
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=2,
+    parser.add_argument('--folder_number',type=int, default=1,
                         help='set how many folders will be processed')
     parser.add_argument('--saveimg_flag', type=bool, default=True,
                         help="flag for saving detection result of not, default as True")
     parser.add_argument('--output_thresh', type=float, default=0.22,
                         help='threshold of score for output the detected bbxs (default=0.05)')
     parser.add_argument('--cam_calibration_path',type=str,
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/cam_mapping_wen.txt',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/cam_mapping_viewnyx.txt',
                         help='filepath of pixel-distance mapping, use None is not needed')
     args = parser.parse_args()
     
@@ -471,7 +512,8 @@ if __name__=='__main__':
                               outputthresh=outputthresh, 
                               saveimg_flag=saveflag,
                               max_class=classnumber,
-                              dist_estimator=dist_estimator)
+                              dist_estimator=dist_estimator,
+                              use_tracking=False)
     endtime=time.time()
     print('\n processing finished, total time:{} s'.format(endtime-starttime))
     print('average detection time is {} s per frame'.format(average_detection_time))
