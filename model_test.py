@@ -248,6 +248,69 @@ def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
 
     cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
 
+def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
+                        last_dist,last_time,detect_time,dist_estimator=None):
+    """
+    bbox=(x,y,width,height)
+    """
+    img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+    font=cv2.FONT_HERSHEY_SIMPLEX
+    linetype=cv2.LINE_AA
+    tl=(int(bbox[0]),int(bbox[1]))
+    br=(int(bbox[0]+bbox[2]),int(bbox[1]+bbox[3]))
+    distance=20000
+    if bbox[2]!=0:
+        img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+        if dist_estimator is not None:
+            bl=(int(bbox[0]),int(bbox[1]+bbox[3]-4))
+            distance=dist_estimator.estimateDistance(width=int(bbox[2]))
+            _,img=raiseAlert(distance,detect_time,last_dist,last_time,
+                             img,abs_dist_only=True)
+            cv2.putText(img, 'd={:.2f}'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
+    cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
+    return distance
+    
+def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True):
+    """
+    raise alert according to absolute distance and high acceleration
+    the distance unit is milimeters, time unit is seconds. always show the 
+    higher danger level
+    
+    input:
+        dist/last_dist: distance for current frame/last frame
+        t/last_t: detection time for current frame/last frame
+        img: current frame
+        abs_dist_only: if true, use absolute distance only
+    
+    output:
+        enum[lvl]: danger level in string
+        img: put text on img
+    
+    note that the t/last is inference time when debugging with PC, when using 
+    phone app, they should be interval between shooting two input frames
+    
+    """
+    enum=('Low','Medium','High')
+    # absolute dist
+    if dist<4000:
+        lvl=2
+    elif dist<8000:
+        lvl=1
+    else:
+        lvl=0
+    
+    # acceleration
+    if not abs_dist_only:
+        a0=dist[0]/t[0]
+        a1=dist[1]/t[1]
+    
+    cv2.putText(img, 'Danger:{}'.format(enum[lvl]), 
+                (4,476), 
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                0.5, (255,255,255), 1, 
+                lineType=cv2.LINE_AA)
+    return enum[lvl],img
+   
 def detectMultipleImages(detection_graph, category_index, testimgpath, 
                          foldernumber, outputthresh=0.5, saveimg_flag=True,
                          max_class=8, dist_estimator=None, use_tracking=False):
@@ -274,6 +337,8 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
     foldercount=0
     filecount=-5
     sumtime=0
+    last_dist=20000
+    last_time=2
     
     if use_tracking:
         objtracker=track_obj.ObjTracker()
@@ -356,10 +421,10 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                             if solidtrack and trackcount<maxtrack:
                                 # refresh tracker and do tracking
                                 # return solidtrack mark
-                                solidtrack, bbox, tracktime = objtracker.updateTrack(image_cv)
+                                solidtrack, bbox, detect_time = objtracker.updateTrack(image_cv)
                                 #print('track frame {}, time {}'.format(filecount+5,tracktime))
                                 trackcount+=1
-                                sumtime+=tracktime
+                                sumtime+=detect_time
                             else:
                                 # detection
                                 # get bbox of leading car
@@ -384,12 +449,10 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                     objtracker.updateTrack(image_cv,init=True,bbox=bbox)
                                     trackcount=0
                             # draw bbox and text and save img
-                            img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-                            tl=(int(bbox[0]),int(bbox[1]))
-                            br=(int(bbox[0]+bbox[2]),int(bbox[1]+bbox[3]))
-                            img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
-                            cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
-                            
+                            last_dist=drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
+                                                last_dist,last_time,detect_time,
+                                                dist_estimator=dist_estimator)
+                            last_time=detect_time
                             
                 # after done save all the annotation into json file, save the file
                 if not use_tracking:
@@ -481,7 +544,7 @@ if __name__=='__main__':
                         help='path to the images to be tested')
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=100,
+    parser.add_argument('--folder_number',type=int, default=1,
                         help='set how many folders will be processed')
     parser.add_argument('--saveimg_flag', type=bool, default=True,
                         help="flag for saving detection result of not, default as True")
@@ -490,7 +553,7 @@ if __name__=='__main__':
     parser.add_argument('--cam_calibration_path',type=str,
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/cam_mapping_viewnyx.txt',
                         help='filepath of pixel-distance mapping, use None is not needed')
-    parser.add_argument('--use_tracking',type=bool, default=False,
+    parser.add_argument('--use_tracking',type=bool, default=True,
                         help='use tracking to boost processing speed or not, default is false')
     args = parser.parse_args()
     
