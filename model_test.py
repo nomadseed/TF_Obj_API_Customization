@@ -202,17 +202,29 @@ def keepOnlyOneLeading(annotationdict,imagename):
     note this is an top level strategy which is after the detection, and thus
     doesn't interfere the detection result
     
+    input:
+        annotationdict: dict to store all annotation
+        imagename: current image name
+    output:
+        annotationdict:
+        not leadingflag: return true if leading car is detected
     """    
     annotationdict[imagename]['annotations'].sort(key=returnbottomy,reverse=True)
     leadingflag = True
+    bbox=(0,0,0,0)
     for i in range(len(annotationdict[imagename]['annotations'])):
         if leadingflag and annotationdict[imagename]['annotations'][i]['category']=='leading':
             leadingflag=False
+            bbox=(annotationdict[imagename]['annotations'][i]['x'],
+                  annotationdict[imagename]['annotations'][i]['y'],
+                  annotationdict[imagename]['annotations'][i]['width'],
+                  annotationdict[imagename]['annotations'][i]['height']
+                    )
         else:
             # caution!!! this step will change the annotation result!!!
             annotationdict[imagename]['annotations'][i]['category']='sideways'
     
-    return annotationdict
+    return annotationdict, not leadingflag, bbox
 
 def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
                   dist_estimator=None):
@@ -253,10 +265,12 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
         max_class: how many class to be detected
         
     output:
-        jsondict: save all the detections into a json file in VIVA annotator format
+        output_dict: raw detection result of tensor graph
+        annotationdict: save all the detections into a json file in VIVA annotator format
+        sumtime_detect/filecount: average detection time
+        sumtime_track/filecount: average tracking time, zero if use_tracking=False
     '''
-    # constants and paths
-
+    # constants
     foldercount=0
     filecount=-5
     sumtime=0
@@ -307,8 +321,8 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                 
                 for imagename in filedict:
                     if 'jpg' in imagename or 'png' in imagename:
-                        image = cv2.imread(os.path.join(imagepath,imagename))
-                        if image is None:
+                        image_cv = cv2.imread(os.path.join(imagepath,imagename))
+                        if image_cv is None:
                             continue
                         image = Image.open(os.path.join(imagepath,imagename))
                         (im_width, im_height) = image.size
@@ -333,32 +347,48 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                             annotationdict = updateAnnotationDict(output_dict,
                                                 annotationdict,imagename,
                                                 im_width,im_height,max_class)
-                            
-                            annotationdict = keepOnlyOneLeading(annotationdict,imagename)
-                            
+                            annotationdict, _ , _ = keepOnlyOneLeading(annotationdict,imagename)
                             drawBBoxNSave(image_np,imagename,savepath,annotationdict,
                                           drawside=True,dist_estimator=dist_estimator)
                             
                         else:
                             # Run detection-tracking inference
-                            if solidtrack and trackcount%maxtrack!=0:
+                            if solidtrack and trackcount<maxtrack:
                                 # refresh tracker and do tracking
                                 # return solidtrack mark
-                                solidtrack=True
+                                solidtrack, bbox, tracktime = objtracker.updateTrack(image_cv)
+                                #print('track frame {}, time {}'.format(filecount+5,tracktime))
+                                trackcount+=1
+                                sumtime+=tracktime
                             else:
                                 # detection
                                 # get bbox of leading car
                                 # if has leading car:
                                     #reture solidtrack mark
                                     #trackcount=0
+                                
                                 starttime=time.time()
                                 output_dict = sess.run(tensor_dict,feed_dict={image_tensor: np.expand_dims(image_np, 0)})
                                 detect_time=time.time()-starttime
                                 if filecount>0: # the first 5 images won't be counted for detection time
                                     sumtime+=detect_time
-                            
+                                annotationdict = updateAnnotationDict(output_dict,
+                                                annotationdict,imagename,
+                                                im_width,im_height,max_class)
+                                # let solidtrack=True if has leading vehicle
+                                annotationdict, solidtrack, bbox = keepOnlyOneLeading(annotationdict,imagename)
+                                #print('detect frame {}, time {}'.format(filecount+5,detect_time))
+                                # update tracker
+                                if solidtrack:
+                                    objtracker.refreshTracker()
+                                    objtracker.updateTrack(image_cv,init=True,bbox=bbox)
+                                    trackcount=0
                             # draw bbox and text and save img
-                                
+                            img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+                            tl=(int(bbox[0]),int(bbox[1]))
+                            br=(int(bbox[0]+bbox[2]),int(bbox[1]+bbox[3]))
+                            img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+                            cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
                             
                             
                 # after done save all the annotation into json file, save the file
@@ -451,7 +481,7 @@ if __name__=='__main__':
                         help='path to the images to be tested')
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=1,
+    parser.add_argument('--folder_number',type=int, default=100,
                         help='set how many folders will be processed')
     parser.add_argument('--saveimg_flag', type=bool, default=True,
                         help="flag for saving detection result of not, default as True")
@@ -460,6 +490,8 @@ if __name__=='__main__':
     parser.add_argument('--cam_calibration_path',type=str,
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/cam_mapping_viewnyx.txt',
                         help='filepath of pixel-distance mapping, use None is not needed')
+    parser.add_argument('--use_tracking',type=bool, default=False,
+                        help='use tracking to boost processing speed or not, default is false')
     args = parser.parse_args()
     
     ckptpath = args.ckpt_path
@@ -471,6 +503,7 @@ if __name__=='__main__':
     foldercount=0
     saveflag=args.saveimg_flag
     outputthresh=args.output_thresh
+    usetracking=args.use_tracking
         
     IMAGE_SIZE = (12, 8)# Size, in inches, of the output images.
     
@@ -505,17 +538,22 @@ if __name__=='__main__':
     
     # detection by function
     starttime=time.time()
-    output_dict, jsondict, average_detection_time =detectMultipleImages(detection_graph, 
-                              category_index=category_index, 
-                              testimgpath=testimgpath, 
-                              foldernumber=foldernumber,  
-                              outputthresh=outputthresh, 
-                              saveimg_flag=saveflag,
-                              max_class=classnumber,
-                              dist_estimator=dist_estimator,
-                              use_tracking=False)
+    output_dict, jsondict, average_detection_time=detectMultipleImages(
+                             detection_graph, 
+                             category_index=category_index, 
+                             testimgpath=testimgpath, 
+                             foldernumber=foldernumber,  
+                             outputthresh=outputthresh, 
+                             saveimg_flag=saveflag,
+                             max_class=classnumber,
+                             dist_estimator=dist_estimator,
+                             use_tracking=usetracking)
     endtime=time.time()
+    if usetracking:
+        print('leading vehicle detection with tracking')
+    else:
+        print('frame by frame leading vehicle detection')
     print('\n processing finished, total time:{} s'.format(endtime-starttime))
-    print('average detection time is {} s per frame'.format(average_detection_time))
+    print('average processing time is {} s per frame'.format(average_detection_time))
 
 ''' End of File '''
