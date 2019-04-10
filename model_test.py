@@ -266,7 +266,7 @@ def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
             distance=dist_estimator.estimateDistance(width=int(bbox[2]))
             _,img=raiseAlert(distance,detect_time,last_dist,last_time,
                              img,abs_dist_only=True)
-            cv2.putText(img, 'd={:.2f}'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
+            cv2.putText(img, '{:.1f}m'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
     cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
     return distance
     
@@ -305,7 +305,7 @@ def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True):
         a1=dist[1]/t[1]
     
     cv2.putText(img, 'Danger:{}'.format(enum[lvl]), 
-                (4,476), 
+                (4,472), 
                 cv2.FONT_HERSHEY_SIMPLEX, 
                 0.5, (255,255,255), 1, 
                 lineType=cv2.LINE_AA)
@@ -544,7 +544,7 @@ if __name__=='__main__':
                         help='path to the images to be tested')
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=1,
+    parser.add_argument('--folder_number',type=int, default=10,
                         help='set how many folders will be processed')
     parser.add_argument('--saveimg_flag', type=bool, default=True,
                         help="flag for saving detection result of not, default as True")
