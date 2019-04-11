@@ -425,7 +425,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                 #print('track frame {}, time {}'.format(filecount+5,tracktime))
                                 trackcount+=1
                                 sumtime+=detect_time
-                            else:
+                            if solidtrack==False or trackcount==maxtrack:
                                 # detection
                                 # get bbox of leading car
                                 # if has leading car:
