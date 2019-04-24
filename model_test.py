@@ -278,7 +278,7 @@ def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
     cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
     return distance
     
-def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=1.5):
+def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=1.0):
     """
     raise alert according to absolute distance and high acceleration
     the distance unit is milimeters, time unit is seconds. always show the 
@@ -311,11 +311,11 @@ def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=1.5):
     if not abs_dist_only:
         predict_dist=(dist-last_dist)/t*timeahead+dist
         if predict_dist<0:
-            lvl=2
+            lvl=max(2,lvl)
         elif predict_dist>8000:
-            lvl=0
+            lvl=max(0,lvl)
         else:
-            lvl=1
+            lvl=max(1,lvl)
     
     cv2.putText(img, 'Danger:{}'.format(enum[lvl]), 
                 (4,472), 
