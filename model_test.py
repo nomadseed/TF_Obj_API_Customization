@@ -97,7 +97,7 @@ def carClassifier(x,y,width,height,threshold=0.2, strip_x1=305,strip_x2=335,y_ro
     category=''
     if threshold<=0 or threshold>1:
         threshold=0.5
-    if y<y_roof:
+    if y+height<y_roof:
         category='sideways'
         return category
     if x1>strip_x1 and x2<strip_x2:
@@ -264,13 +264,21 @@ def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
         if dist_estimator is not None:
             bl=(int(bbox[0]),int(bbox[1]+bbox[3]-4))
             distance=dist_estimator.estimateDistance(width=int(bbox[2]))
-            _,img=raiseAlert(distance,detect_time,last_dist,last_time,
-                             img,abs_dist_only=True)
+
+            # use real detection time for real camera-captured video, for our
+            # demo, however, the video are all of 10 fps sample frequency
+            _,img=raiseAlert(distance,0.1,last_dist,0.1,
+                              img,abs_dist_only=False)
+# =============================================================================
+#             _,img=raiseAlert(distance,detect_time,last_dist,last_time,
+#                               img,abs_dist_only=True)
+# =============================================================================
+            
             cv2.putText(img, '{:.1f}m'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
     cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
     return distance
     
-def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True):
+def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=1.5):
     """
     raise alert according to absolute distance and high acceleration
     the distance unit is milimeters, time unit is seconds. always show the 
@@ -291,7 +299,7 @@ def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True):
     
     """
     enum=('Low','Medium','High')
-    # absolute dist
+    # danger lvl from absolute dist
     if dist<4000:
         lvl=2
     elif dist<8000:
@@ -301,8 +309,13 @@ def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True):
     
     # acceleration
     if not abs_dist_only:
-        a0=dist[0]/t[0]
-        a1=dist[1]/t[1]
+        predict_dist=(dist-last_dist)/t*timeahead+dist
+        if predict_dist<0:
+            lvl=2
+        elif predict_dist>8000:
+            lvl=0
+        else:
+            lvl=1
     
     cv2.putText(img, 'Danger:{}'.format(enum[lvl]), 
                 (4,472), 
