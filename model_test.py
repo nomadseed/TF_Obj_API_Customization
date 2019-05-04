@@ -237,11 +237,12 @@ def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
         if annotationdict[imagename]['annotations'][i]['category']=='leading':
             # draw leading car in red
             img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+            #img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
             #cv2.putText(img, 'leading', tl, font, 1, (0,0,255), 1, lineType=linetype)
             if dist_estimator is not None:
                 bl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height']-4)
                 distance=dist_estimator.estimateDistance(width=annotationdict[imagename]['annotations'][i]['width'])
-                cv2.putText(img, 'd={:.2f}'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
+                #cv2.putText(img, 'd={:.2f}'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
         elif drawside:
             # draw sideway cars in green
             img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
@@ -262,7 +263,7 @@ def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
     if bbox[2]!=0:
         img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
         if dist_estimator is not None:
-            bl=(int(bbox[0]),int(bbox[1]+bbox[3]-4))
+            #bl=(int(bbox[0]),int(bbox[1]+bbox[3]-4))
             distance=dist_estimator.estimateDistance(width=int(bbox[2]))
 
             # use real detection time for real camera-captured video, for our
@@ -274,11 +275,11 @@ def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
 #                               img,abs_dist_only=True)
 # =============================================================================
             
-            cv2.putText(img, '{:.1f}m'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
+            cv2.putText(img, 'Distance: {:.1f}m'.format(distance/1000), (4,456), font, 0.5, (255,255,255), 1, lineType=linetype)
     cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
     return distance
     
-def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=1.0):
+def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=0.6):
     """
     raise alert according to absolute distance and high acceleration
     the distance unit is milimeters, time unit is seconds. always show the 
@@ -375,7 +376,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
             folderdict=os.listdir(testimgpath)
             for folder in folderdict:
                 # skip the files, choose folders only
-                if '.' in folder:
+                if '.' in folder or 'val' not in folder:
                     continue
                 
                 # for debug, set the number of folders to be processed
@@ -387,8 +388,9 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                 # show folder name and create save path
                 imagepath=os.path.join(testimgpath,folder)
                 print('processing folder:',imagepath)
+                
+                savepath=os.path.join(testimgpath,folder,'leadingdetect')
                 if saveimg_flag:
-                    savepath=os.path.join(testimgpath,folder,'leadingdetect')
                     if not os.path.exists(savepath):
                         os.makedirs(savepath)
                 
@@ -547,14 +549,16 @@ if __name__=='__main__':
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes
     parser=argparse.ArgumentParser()
     parser.add_argument('--ckpt_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/ckpt_ssd_opt_vnx_finetune/export/frozen_inference_graph.pb', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/ckpt_ssd_opt_300/export/frozen_inference_graph.pb', 
                         help="select the file path for ckpt folder")
     parser.add_argument('--label_path', type=str, 
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/data/class_labels.pbtxt', 
                         help="select the file path for class labels")
     parser.add_argument('--testimg_path',type=str,
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k',
                         help='path to the images to be tested')
+    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k
+    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
     parser.add_argument('--folder_number',type=int, default=10,
@@ -566,7 +570,7 @@ if __name__=='__main__':
     parser.add_argument('--cam_calibration_path',type=str,
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/cam_mapping_viewnyx.txt',
                         help='filepath of pixel-distance mapping, use None is not needed')
-    parser.add_argument('--use_tracking',type=bool, default=True,
+    parser.add_argument('--use_tracking',type=bool, default=False,
                         help='use tracking to boost processing speed or not, default is false')
     args = parser.parse_args()
     
