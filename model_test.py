@@ -227,7 +227,7 @@ def keepOnlyOneLeading(annotationdict,imagename):
     return annotationdict, not leadingflag, bbox
 
 def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
-                  dist_estimator=None):
+                  dist_estimator=None, show_leading=False):
     img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
     font=cv2.FONT_HERSHEY_SIMPLEX
     linetype=cv2.LINE_AA
@@ -236,8 +236,10 @@ def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
         br=(annotationdict[imagename]['annotations'][i]['x']+annotationdict[imagename]['annotations'][i]['width'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height'])
         if annotationdict[imagename]['annotations'][i]['category']=='leading':
             # draw leading car in red
-            img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
-            #img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
+            if show_leading:
+                img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+            else:
+                img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
             #cv2.putText(img, 'leading', tl, font, 1, (0,0,255), 1, lineType=linetype)
             if dist_estimator is not None:
                 bl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height']-4)
@@ -250,7 +252,8 @@ def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
     cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
 
 def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
-                        last_dist,last_time,detect_time,dist_estimator=None):
+                        last_dist,last_time,detect_time,dist_estimator=None,
+                        saveimg_flag=False):
     """
     bbox=(x,y,width,height)
     """
@@ -276,7 +279,8 @@ def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
 # =============================================================================
             
             cv2.putText(img, 'Distance: {:.1f}m'.format(distance/1000), (4,456), font, 0.5, (255,255,255), 1, lineType=linetype)
-    cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
+    if saveimg_flag:
+        cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
     return distance
     
 def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=0.6):
@@ -327,7 +331,8 @@ def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=0.6):
    
 def detectMultipleImages(detection_graph, category_index, testimgpath, 
                          foldernumber, outputthresh=0.5, saveimg_flag=True,
-                         max_class=8, dist_estimator=None, use_tracking=False):
+                         max_class=8, dist_estimator=None, use_tracking=False,
+                         val_only=True, show_leading=False):
     '''
     load the frozen graph (model) and run detection among all the images
     
@@ -376,7 +381,11 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
             folderdict=os.listdir(testimgpath)
             for folder in folderdict:
                 # skip the files, choose folders only
-                if '.' in folder or 'val' not in folder:
+                if '.' in folder:
+                    continue
+                
+                # run model for val set only
+                if val_only and 'val' not in folder:
                     continue
                 
                 # for debug, set the number of folders to be processed
@@ -428,8 +437,10 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                                 annotationdict,imagename,
                                                 im_width,im_height,max_class)
                             annotationdict, _ , _ = keepOnlyOneLeading(annotationdict,imagename)
-                            drawBBoxNSave(image_np,imagename,savepath,annotationdict,
-                                          drawside=True,dist_estimator=dist_estimator)
+                            if saveimg_flag:
+                                drawBBoxNSave(image_np,imagename,savepath,annotationdict,
+                                          drawside=True,dist_estimator=dist_estimator,
+                                          show_leading=show_leading)
                             
                         else:
                             # Run detection-tracking inference
@@ -466,7 +477,8 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                             # draw bbox and text and save img
                             last_dist=drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
                                                 last_dist,last_time,detect_time,
-                                                dist_estimator=dist_estimator)
+                                                dist_estimator = dist_estimator,
+                                                saveimg_flag = saveimg_flag)
                             last_time=detect_time
                             
                 # after done save all the annotation into json file, save the file
@@ -555,23 +567,29 @@ if __name__=='__main__':
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/data/class_labels.pbtxt', 
                         help="select the file path for class labels")
     parser.add_argument('--testimg_path',type=str,
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/FoolingNetwork/outputs',
                         help='path to the images to be tested')
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k
+    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes
+    parser.add_argument('--val_only', type=bool, default=True,
+                        help="run model on val set only if True, this will require\
+                         that you have a folder with 'val' in its name")
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=10,
+    parser.add_argument('--folder_number',type=int, default=100,
                         help='set how many folders will be processed')
     parser.add_argument('--saveimg_flag', type=bool, default=True,
-                        help="flag for saving detection result of not, default as True")
-    parser.add_argument('--output_thresh', type=float, default=0.22,
+                        help="flag for saving detection result or not, default as True")
+    parser.add_argument('--output_thresh', type=float, default=0.05,
                         help='threshold of score for output the detected bbxs (default=0.05)')
     parser.add_argument('--cam_calibration_path',type=str,
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/cam_mapping_viewnyx.txt',
                         help='filepath of pixel-distance mapping, use None is not needed')
     parser.add_argument('--use_tracking',type=bool, default=False,
                         help='use tracking to boost processing speed or not, default is false')
+    parser.add_argument('--show_leading',type=bool,default=False,
+                        help='show leading vehicle in red bbox if true, in green if false.')
     args = parser.parse_args()
     
     ckptpath = args.ckpt_path
@@ -579,11 +597,14 @@ if __name__=='__main__':
     camcalpath = args.cam_calibration_path
     classnumber = args.class_number
     testimgpath = args.testimg_path
+    valonly=args.val_only
     foldernumber=args.folder_number
     foldercount=0
     saveflag=args.saveimg_flag
     outputthresh=args.output_thresh
     usetracking=args.use_tracking
+    showleading=args.show_leading
+    
         
     IMAGE_SIZE = (12, 8)# Size, in inches, of the output images.
     
@@ -627,7 +648,9 @@ if __name__=='__main__':
                              saveimg_flag=saveflag,
                              max_class=classnumber,
                              dist_estimator=dist_estimator,
-                             use_tracking=usetracking)
+                             use_tracking=usetracking,
+                             val_only=valonly,
+                             show_leading=showleading)
     endtime=time.time()
     if usetracking:
         print('leading vehicle detection with tracking')
