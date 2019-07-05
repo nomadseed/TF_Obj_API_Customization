@@ -29,6 +29,7 @@ import argparse
 import json
 import time
 import track_obj
+import myGreedyNMS
 
 from matplotlib import pyplot as plt
 from PIL import Image
@@ -155,6 +156,51 @@ def detectSingleImage(image, graph):
             if 'detection_masks' in output_dict:
                 output_dict['detection_masks'] = output_dict['detection_masks'][0]
     return output_dict
+
+def updateAnnotationDict_Raw(output_dict,annotationdict,
+                         imagename,im_width,im_height,
+                         max_class,category_index,
+                         outputthresh=0.05,IOUthresh=0.5):
+    # loading raw result from model
+    boxes=output_dict['Postprocessor/raw_box_locations'][0]
+    scores=output_dict['Postprocessor/raw_box_scores'][0]
+    boxlist, _ = myGreedyNMS.sortByScore(scores,boxes)
+    
+    # Format of NMSed_list:
+    # [y_min, x_min, y_max, x_max, highest_score, predicted_class]
+    # the first 4 values are of range [0.0 1.0], highest_score [0.0 1.0]
+    # predicted_class is class code, which should be an integer. If class code
+    # is 0, means it's background
+    NMSed_list = myGreedyNMS.greedyNonMaximumSupression(boxlist,
+                            clipthresh=outputthresh,
+                            IOUthresh=IOUthresh)
+    
+    ########### save detection result (output_dict) ############
+    ###### into jsondict in the format of VIVA Annotation ######
+    annotationdict[imagename]={}
+    annotationdict[imagename]['name']=imagename
+    annotationdict[imagename]['width']=im_width
+    annotationdict[imagename]['height']=im_height
+    annotationdict[imagename]['annotations']=[]
+    
+    for i in range(len(NMSed_list)):
+        annodict={}
+        annodict['id']=i
+        annodict['shape']=['Box',1]
+        annodict['label']=getClass(NMSed_list[i][5],category_index,max_class)
+        if annodict['label']=='null':
+            continue
+        ymin,xmin,ymax,xmax=NMSed_list[i][0:4]
+        annodict['x']=int(xmin*im_width)
+        annodict['y']=int(ymin*im_height)
+        annodict['width']=int((xmax-xmin)*im_width)
+        annodict['height']=int((ymax-ymin)*im_height)
+        annodict['category']=carClassifier(annodict['x'],annodict['y'],annodict['width'],annodict['height'])
+        annodict['score']=float(NMSed_list[i][4])
+        
+        annotationdict[imagename]['annotations'].append(annodict)    
+        
+    return annotationdict
 
 def updateAnnotationDict(output_dict,annotationdict,imagename,im_width,im_height,
                          max_class):
@@ -332,7 +378,7 @@ def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=0.6):
 def detectMultipleImages(detection_graph, category_index, testimgpath, 
                          foldernumber, outputthresh=0.5, saveimg_flag=True,
                          max_class=8, dist_estimator=None, use_tracking=False,
-                         val_only=True, show_leading=False):
+                         val_only=True, show_leading=False, customNMS=True):
     '''
     load the frozen graph (model) and run detection among all the images
     
@@ -367,15 +413,22 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
     # initialize the graph once for all
     with detection_graph.as_default():
         with tf.Session() as sess:            
+                    
             # Get handles to input and output tensors
             ops = tf.get_default_graph().get_operations()
             all_tensor_names = {output.name for op in ops for output in op.outputs}
+            
             tensor_dict = {}
             for key in ['num_detections', 'detection_boxes', 
-                        'detection_scores', 'detection_classes']:
+                        'detection_scores', 'detection_classes',
+                        'Postprocessor/raw_box_encodings',
+                        'Postprocessor/raw_box_locations',
+                        'Postprocessor/raw_box_scores']:
                 tensor_name = key + ':0'
+                
                 if tensor_name in all_tensor_names:
                     tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(tensor_name)
+           
             image_tensor = tf.get_default_graph().get_tensor_by_name('image_tensor:0')
             
             folderdict=os.listdir(testimgpath)
@@ -433,9 +486,20 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                 sumtime+=detect_time
                                 #print('average detection time is {} s'.format(sumtime/filecount))
                             
-                            annotationdict = updateAnnotationDict(output_dict,
+                            if not customNMS:
+                                # this is using first 100 detection results
+                                annotationdict = updateAnnotationDict(output_dict,
                                                 annotationdict,imagename,
                                                 im_width,im_height,max_class)
+                            else:
+                                # use raw detection results with highest score
+                                # NMS list will clipped by score threshold
+                                annotationdict = updateAnnotationDict_Raw(output_dict,annotationdict,
+                                                              imagename,im_width,im_height,
+                                                              max_class,category_index,
+                                                              outputthresh=outputthresh,IOUthresh=0.5)
+                            
+                            
                             annotationdict, _ , _ = keepOnlyOneLeading(annotationdict,imagename)
                             if saveimg_flag:
                                 drawBBoxNSave(image_np,imagename,savepath,annotationdict,
@@ -567,7 +631,7 @@ if __name__=='__main__':
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/data/class_labels.pbtxt', 
                         help="select the file path for class labels")
     parser.add_argument('--testimg_path',type=str,
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/FoolingNetwork/outputs',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k',
                         help='path to the images to be tested')
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k
@@ -577,7 +641,7 @@ if __name__=='__main__':
                          that you have a folder with 'val' in its name")
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=100,
+    parser.add_argument('--folder_number',type=int, default=1,
                         help='set how many folders will be processed')
     parser.add_argument('--saveimg_flag', type=bool, default=True,
                         help="flag for saving detection result or not, default as True")
@@ -613,7 +677,10 @@ if __name__=='__main__':
         dist_estimator.setWidthReference(1600)
         mapping=dist_estimator.loadMappingFunc(filepath=camcalpath)
         #result=dist_estimator.estimateDistance(120)
-
+    
+    # reset for debugging
+    tf.reset_default_graph()
+    
     # Load a (frozen) Tensorflow model into memory
     detection_graph = tf.Graph()
     with detection_graph.as_default():
@@ -639,7 +706,7 @@ if __name__=='__main__':
     
     # detection by function
     starttime=time.time()
-    output_dict, jsondict, average_detection_time=detectMultipleImages(
+    output_dict, jsondict, average_detection_time =detectMultipleImages(
                              detection_graph, 
                              category_index=category_index, 
                              testimgpath=testimgpath, 
