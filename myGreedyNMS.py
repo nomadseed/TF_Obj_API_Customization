@@ -9,8 +9,8 @@ import numpy as np
 import cv2
 
 
-def getClass1Score(x,classname='1'):
-    return x[classname]
+def getClass1Score(x,classcode=1):
+    return x['scores'][classcode]
 
 def sortByScore(scores,boxes):
     """
@@ -24,8 +24,8 @@ def sortByScore(scores,boxes):
             N is the number of boxes, for each box it has 4 parameters
             [y_min, x_min, y_max, x_max]
     Returns:
-        boxlist: a new boxlist in array format, format [N,q-1], where q-1 
-            means the background score is discarded
+        boxlist: a new boxlist in array format, format [N,6], in each box it 
+            has [y_min, x_min, y_max, x_max, highest_score, predicted_class]
         fullboxlist: a new boxlist in list & dict format, has more details than
             the output "boxlist"
     """
@@ -33,8 +33,7 @@ def sortByScore(scores,boxes):
     fullboxlist=[]
     for i in range(len(scores)):
         boxdict={}
-        boxdict['0']=scores[i][0]
-        boxdict['1']=scores[i][1]
+        boxdict['scores']=scores[i]
         boxdict['y_min']=boxes[i][0]
         boxdict['x_min']=boxes[i][1]
         boxdict['y_max']=boxes[i][2]
@@ -44,13 +43,22 @@ def sortByScore(scores,boxes):
     fullboxlist.sort(key=getClass1Score, reverse=True)
     boxlist=[]
     for boxdict in fullboxlist:
+        # if class 0 has highest prob, find second highest as class
+        class_code=np.where(boxdict['scores']==np.amax(boxdict['scores']))[0][0]
+        if class_code==0:
+            class_code = 1+ np.where(boxdict['scores'][1:]==np.amax(boxdict['scores'][1:]))[0][0]
+
+        
         boxlist.append([boxdict['y_min'],
                           boxdict['x_min'],
                           boxdict['y_max'],
                           boxdict['x_max'],
-                          boxdict['1']])
+                          boxdict['scores'][class_code],
+                          class_code
+                          ])
     
     return boxlist,fullboxlist
+
 
 def getIoU(bbx_benchmark,bbx_detect):
     """
@@ -132,7 +140,7 @@ if __name__=='__main__':
     w=640
     h=480
     for i in range(len(boxlist)):
-        if boxlist[i][4]<clipthresh:
+        if boxlist[i][5]<clipthresh:
             break
         tl=(int(boxlist[i][1]*w),int(boxlist[i][0]*h))
         br=(int(boxlist[i][3]*w),int(boxlist[i][2]*h))
