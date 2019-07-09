@@ -1,5 +1,5 @@
-# Viewnyx-dataset <br/>
+# TF Obj API Customization <br/>
 ## Includes:<br/>
-Preprocess the images in viewnyx dataset <br/>
-Utils for testing the viewnyx project <br/>
-Utils for documenting the viewnyx project <br/>
+Preprocess the images in  dataset <br/>
+Utils for testing the project <br/>
+Utils for documenting the project <br/>
