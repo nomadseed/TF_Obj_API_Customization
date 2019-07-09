@@ -288,7 +288,7 @@ def plotPrecisionRecall(performancedict,key='overall',
     plt.figure(figsize=(6,6),dpi=100)
     plt.axis(chartaxis)
     plt.plot(recall_list,precision_list,'r.-',label='Overall')
-    plt.title(modelname+ key +' precision vs recall')
+    plt.title(modelname+ ' ' + key +' precision vs recall')
     
     plt.xlabel('recall')
     plt.ylabel('precision')
