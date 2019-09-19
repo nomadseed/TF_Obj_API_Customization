@@ -3,19 +3,19 @@
 Created on Wed Aug 15 12:40:44 2018
 
 test the performance of the trained model with checkpoint and saved model
-# this api is for tensorflow version 1.4.0 or later
+# this api is for tensorflow version 1.10.0 or later
 args:
-    ckpt_path: select the file path for ckpt folder
-    label_path: select the file path for class labels
-    testimg_path: path to the images to be tested
-    class_number: set number of classes default=1
-    folder_number:set how many folders will be processed,default=20
-    saveimg_flag: flag for saving detection result of not, default as True
-    output_thresh: threshold of score for output the detected bbxs, default=0.3
-
+    (please check the help info in the main function, which is at the bottom of
+    this script)
+    
 usage example:
-    python3 model_performance.py --testimg_path YOUR/IMG/PATH 
-        --output_thresh 0.3
+        
+    python3 model_test.py --testimg_path= /YOUR/IMG/PATH 
+    --ckpt_path=/PATH/tf-object-detection-api/research/viewnyx/ckpt_ssd_opt_vnx_finetune/export/frozen_inference_graph.pb 
+    --label_path=/PATH/tf-object-detection-api/research/viewnyx/data/class_labels.pbtxt 
+    --cam_calibration_path=/PATH/cam_mapping_viewnyx.txt 
+    --class_number 1 --output_thresh 0.05
+    --use_tracking True
     
 
 @author: Wen Wen
@@ -200,7 +200,7 @@ def updateAnnotationDict_Raw(output_dict,annotationdict,
         
         annotationdict[imagename]['annotations'].append(annodict)    
         
-    return annotationdict
+    return annotationdict, boxes, scores
 
 def updateAnnotationDict(output_dict,annotationdict,imagename,im_width,im_height,
                          max_class):
@@ -277,25 +277,28 @@ def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
     img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
     font=cv2.FONT_HERSHEY_SIMPLEX
     linetype=cv2.LINE_AA
+    linewidth=2
+    distance=999999 # a default value if no leading car appears in the image
     for i in range(len(annotationdict[imagename]['annotations'])):
         tl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y'])
         br=(annotationdict[imagename]['annotations'][i]['x']+annotationdict[imagename]['annotations'][i]['width'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height'])
         if annotationdict[imagename]['annotations'][i]['category']=='leading':
             # draw leading car in red
             if show_leading:
-                img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
+                img=cv2.rectangle(img,tl,br,(0,0,255),linewidth) # red
             else:
-                img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
+                img=cv2.rectangle(img,tl,br,(0,255,0),linewidth) # green
             #cv2.putText(img, 'leading', tl, font, 1, (0,0,255), 1, lineType=linetype)
             if dist_estimator is not None:
                 bl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height']-4)
                 distance=dist_estimator.estimateDistance(width=annotationdict[imagename]['annotations'][i]['width'])
-                #cv2.putText(img, 'd={:.2f}'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
+                cv2.putText(img, 'd={:.2f}'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
         elif drawside:
             # draw sideway cars in green
-            img=cv2.rectangle(img,tl,br,(0,255,0),2) # green
+            img=cv2.rectangle(img,tl,br,(0,255,0),linewidth) # green
 
     cv2.imwrite(os.path.join(savepath,imagename.split('.')[0]+'_leadingdetect.jpg'),img) # don't save it in png!!!
+    return distance
 
 def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
                         last_dist,last_time,detect_time,dist_estimator=None,
@@ -308,7 +311,7 @@ def drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
     linetype=cv2.LINE_AA
     tl=(int(bbox[0]),int(bbox[1]))
     br=(int(bbox[0]+bbox[2]),int(bbox[1]+bbox[3]))
-    distance=20000
+    distance=999999
     if bbox[2]!=0:
         img=cv2.rectangle(img,tl,br,(0,0,255),2) # red
         if dist_estimator is not None:
@@ -374,184 +377,6 @@ def raiseAlert(dist,t,last_dist,last_t,img,abs_dist_only=True,timeahead=0.6):
                 0.5, (255,255,255), 1, 
                 lineType=cv2.LINE_AA)
     return enum[lvl],img
-   
-def detectMultipleImages(detection_graph, category_index, testimgpath, 
-                         foldernumber, outputthresh=0.5, saveimg_flag=True,
-                         max_class=8, dist_estimator=None, use_tracking=False,
-                         val_only=True, show_leading=False, customNMS=True):
-    '''
-    load the frozen graph (model) and run detection among all the images
-    
-    args:
-        testimgpath: the top level of your image folders, note that subfolders 
-            are considered as default
-        foldernumber: how many subfolders do you want to test
-        detection_graph: the loaded frozen graph
-        category_index: index to convert category labels into numbers
-        outputthresh
-        saveimg_flag: if ture, save detection results under subfolder 'leadingdetect'
-        max_class: how many class to be detected
-        
-    output:
-        output_dict: raw detection result of tensor graph
-        annotationdict: save all the detections into a json file in VIVA annotator format
-        sumtime_detect/filecount: average detection time
-        sumtime_track/filecount: average tracking time, zero if use_tracking=False
-    '''
-    # constants
-    foldercount=0
-    filecount=-5
-    sumtime=0
-    last_dist=20000
-    last_time=2
-    
-    if use_tracking:
-        objtracker=track_obj.ObjTracker()
-        objtracker.buildTracker()
-        maxtrack=10 # switch to detection when reach max track frame
-    
-    # initialize the graph once for all
-    with detection_graph.as_default():
-        with tf.Session() as sess:            
-                    
-            # Get handles to input and output tensors
-            ops = tf.get_default_graph().get_operations()
-            all_tensor_names = {output.name for op in ops for output in op.outputs}
-            
-            tensor_dict = {}
-            for key in ['num_detections', 'detection_boxes', 
-                        'detection_scores', 'detection_classes',
-                        'Postprocessor/raw_box_encodings',
-                        'Postprocessor/raw_box_locations',
-                        'Postprocessor/raw_box_scores']:
-                tensor_name = key + ':0'
-                
-                if tensor_name in all_tensor_names:
-                    tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(tensor_name)
-           
-            image_tensor = tf.get_default_graph().get_tensor_by_name('image_tensor:0')
-            
-            folderdict=os.listdir(testimgpath)
-            for folder in folderdict:
-                # skip the files, choose folders only
-                if '.' in folder:
-                    continue
-                
-                # run model for val set only
-                if val_only and 'val' not in folder:
-                    continue
-                
-                # for debug, set the number of folders to be processed
-                if foldercount>=foldernumber:
-                    break
-                else:
-                    foldercount+=1
-                
-                # show folder name and create save path
-                imagepath=os.path.join(testimgpath,folder)
-                print('processing folder:',imagepath)
-                
-                savepath=os.path.join(testimgpath,folder,'leadingdetect')
-                if saveimg_flag:
-                    if not os.path.exists(savepath):
-                        os.makedirs(savepath)
-                
-                filedict=os.listdir(imagepath)
-                annotationdict={} # save all detection result into json file
-                trackcount=0 # record how many frames used for tracking
-                solidtrack=False
-                
-                for imagename in filedict:
-                    if 'jpg' in imagename or 'png' in imagename:
-                        image_cv = cv2.imread(os.path.join(imagepath,imagename))
-                        if image_cv is None:
-                            continue
-                        image = Image.open(os.path.join(imagepath,imagename))
-                        (im_width, im_height) = image.size
-                        filecount+=1
-                        # the array based representation of the image will be used 
-                        # later in order to prepare the
-                        # result image with boxes and labels on it.
-                        image_np = loadImageInNpArray(image)
-                        # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-                        # image_np_expanded = np.expand_dims(image_np, axis=0)
-                        
-                        ##################### Actual detection ######################
-                        if not use_tracking:
-                            # Run detection inference
-                            starttime=time.time()
-                            output_dict = sess.run(tensor_dict,feed_dict={image_tensor: np.expand_dims(image_np, 0)})
-                            detect_time=time.time()-starttime
-                            if filecount>0: # the first 5 images won't be counted for detection time
-                                sumtime+=detect_time
-                                #print('average detection time is {} s'.format(sumtime/filecount))
-                            
-                            if not customNMS:
-                                # this is using first 100 detection results
-                                annotationdict = updateAnnotationDict(output_dict,
-                                                annotationdict,imagename,
-                                                im_width,im_height,max_class)
-                            else:
-                                # use raw detection results with highest score
-                                # NMS list will clipped by score threshold
-                                annotationdict = updateAnnotationDict_Raw(output_dict,annotationdict,
-                                                              imagename,im_width,im_height,
-                                                              max_class,category_index,
-                                                              outputthresh=outputthresh,IOUthresh=0.5)
-                            
-                            
-                            annotationdict, _ , _ = keepOnlyOneLeading(annotationdict,imagename)
-                            if saveimg_flag:
-                                drawBBoxNSave(image_np,imagename,savepath,annotationdict,
-                                          drawside=True,dist_estimator=dist_estimator,
-                                          show_leading=show_leading)
-                            
-                        else:
-                            # Run detection-tracking inference
-                            if solidtrack and trackcount<maxtrack:
-                                # refresh tracker and do tracking
-                                # return solidtrack mark
-                                solidtrack, bbox, detect_time = objtracker.updateTrack(image_cv)
-                                #print('track frame {}, time {}'.format(filecount+5,tracktime))
-                                trackcount+=1
-                                sumtime+=detect_time
-                            if solidtrack==False or trackcount==maxtrack:
-                                # detection
-                                # get bbox of leading car
-                                # if has leading car:
-                                    #reture solidtrack mark
-                                    #trackcount=0
-                                
-                                starttime=time.time()
-                                output_dict = sess.run(tensor_dict,feed_dict={image_tensor: np.expand_dims(image_np, 0)})
-                                detect_time=time.time()-starttime
-                                if filecount>0: # the first 5 images won't be counted for detection time
-                                    sumtime+=detect_time
-                                annotationdict = updateAnnotationDict(output_dict,
-                                                annotationdict,imagename,
-                                                im_width,im_height,max_class)
-                                # let solidtrack=True if has leading vehicle
-                                annotationdict, solidtrack, bbox = keepOnlyOneLeading(annotationdict,imagename)
-                                #print('detect frame {}, time {}'.format(filecount+5,detect_time))
-                                # update tracker
-                                if solidtrack:
-                                    objtracker.refreshTracker()
-                                    objtracker.updateTrack(image_cv,init=True,bbox=bbox)
-                                    trackcount=0
-                            # draw bbox and text and save img
-                            last_dist=drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
-                                                last_dist,last_time,detect_time,
-                                                dist_estimator = dist_estimator,
-                                                saveimg_flag = saveimg_flag)
-                            last_time=detect_time
-                            
-                # after done save all the annotation into json file, save the file
-                if not use_tracking:
-                    # save annotation if not using tracking
-                    with open(os.path.join(testimgpath,'annotation_'+folder+'_detection.json'),'w') as savefile:
-                        savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
-                    
-    return output_dict, annotationdict, sumtime/filecount
 
 class DistEstimator():
     """
@@ -618,42 +443,257 @@ class DistEstimator():
         x2=mapping[high,0]
         y2=mapping[high,1]
         return (y2-y1)/(x2-x1)*(width-x2)+y2
+   
+def detectMultipleImages(detection_graph, category_index, testimgpath, 
+                         foldernumber, outputthresh=0.5, saveimg_flag=True,
+                         max_class=8, dist_estimator=None, use_tracking=False,
+                         val_only=True, show_leading=False, customNMS=True,
+                         save_raw=False):
+    '''
+    load the frozen graph (model) and run detection among all the images
+    
+    args:
+        testimgpath: the top level of your image folders, note that subfolders 
+            are considered as default
+        foldernumber: how many subfolders do you want to test
+        detection_graph: the loaded frozen graph
+        category_index: index to convert category labels into numbers
+        outputthresh
+        saveimg_flag: if ture, save detection results under subfolder 'leadingdetect'
+        max_class: how many class to be detected
+        
+    output:
+        output_dict: raw detection result of tensor graph
+        annotationdict: save all the detections into a json file in VIVA annotator format
+        sumtime_detect/filecount: average detection time
+        sumtime_track/filecount: average tracking time, zero if use_tracking=False
+    '''
+    # constants
+    foldercount=0
+    filecount=-5
+    sumtime=0
+    timelist=[]
+    last_dist=20000
+    last_time=2
+    chunksize=1000
+    
+    if use_tracking:
+        objtracker=track_obj.ObjTracker()
+        objtracker.buildTracker()
+        maxtrack=10 # switch to detection when reach max track frame
+        print('detection-tracking scheme is used')
+    print('chunk size is {} images'.format(chunksize))
+    
+    # initialize the graph once for all
+    with detection_graph.as_default():
+        with tf.Session() as sess:            
+                    
+            # Get handles to input and output tensors
+            ops = tf.get_default_graph().get_operations()
+            all_tensor_names = {output.name for op in ops for output in op.outputs}
+            
+            tensor_dict = {}
+            for key in [#'num_detections', 'detection_boxes', 
+                        #'detection_scores', 'detection_classes',
+                        'Postprocessor/raw_box_encodings',
+                        'Postprocessor/raw_box_locations',
+                        'Postprocessor/raw_box_scores']:
+                tensor_name = key + ':0'
+                
+                if tensor_name in all_tensor_names:
+                    tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(tensor_name)
+           
+            image_tensor = tf.get_default_graph().get_tensor_by_name('image_tensor:0')
+            
+            folderdict=os.listdir(testimgpath)
+            for folder in folderdict:
+                # skip the files, choose folders only
+                if '.' in folder:
+                    continue
+                
+                # run model for val set only
+                if val_only and 'val' not in folder:
+                    continue
+                
+                # for debug, set the number of folders to be processed
+                if foldercount>=foldernumber:
+                    break
+                else:
+                    foldercount+=1
+                
+                # show folder name and create save path
+                imagepath=os.path.join(testimgpath,folder)
+                print('processing folder:',imagepath)
+                
+                savepath=os.path.join(testimgpath,folder,'leadingdetect')
+                if saveimg_flag:
+                    if not os.path.exists(savepath):
+                        os.makedirs(savepath)
+                
+                filedict=os.listdir(imagepath)
+                annotationdict={} # save all detection result into json file
+                distlist={} # save all the distances estimated from prediction
+                trackcount=0 # record how many frames used for tracking
+                solidtrack=False
+                
+                for imagename in filedict:
+                    if 'jpg' in imagename or 'png' in imagename:
+                        image_cv = cv2.imread(os.path.join(imagepath,imagename))
+                        if image_cv is None:
+                            continue
+                        image = Image.open(os.path.join(imagepath,imagename))
+                        (im_width, im_height) = image.size
+                        
+                        filecount+=1
+                        # the array based representation of the image will be used 
+                        # later in order to prepare the
+                        # result image with boxes and labels on it.
+                        image_np = loadImageInNpArray(image)
+                        # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+                        # image_np_expanded = np.expand_dims(image_np, axis=0)
+                        
+                        ##################### Actual detection ######################
+                        if not use_tracking:
+                            # Run detection inference
+                            starttime=time.time()
+                            output_dict = sess.run(tensor_dict,feed_dict={image_tensor: np.expand_dims(image_np, 0)})
+                            detect_time=time.time()-starttime
+                            if filecount>0: # the first 5 images won't be counted for detection time
+                                sumtime+=detect_time
+                                print('processing time: {} s'.format(detect_time))
+                                if filecount==chunksize:
+                                    timelist.append(sumtime/chunksize)
+                                    print('average time of current chunk: {}'.format(sumtime/filecount))
+                                    filecount=0
+                                    sumtime=0
+                                #print('average detection time is {} s'.format(sumtime/filecount))
+                            
+                            if not customNMS:
+                                # this is using first 100 detection results
+                                annotationdict = updateAnnotationDict(output_dict,
+                                                annotationdict,imagename,
+                                                im_width,im_height,max_class)
+                            else:
+                                # use raw detection results with highest score
+                                # NMS list will clipped by score threshold
+                                annotationdict, rawboxes, rawscores = updateAnnotationDict_Raw(output_dict,annotationdict,
+                                                              imagename,im_width,im_height,
+                                                              max_class,category_index,
+                                                              outputthresh=outputthresh,IOUthresh=0.5)
+                                if save_raw:
+                                    np.savez(os.path.join(savepath,imagename.split('.')[0]), 
+                                             rawboxes, rawscores)
+                                    #print('npz saved')
+                            
+                            annotationdict, _ , _ = keepOnlyOneLeading(annotationdict,imagename)
+                            if saveimg_flag:
+                                distlist[imagename] = drawBBoxNSave(image_np,imagename,
+                                        savepath,annotationdict,
+                                        drawside=True,dist_estimator=dist_estimator,
+                                        show_leading=show_leading)
+                                
+                        else:
+                            # Run detection-tracking inference
+                            if solidtrack and trackcount<maxtrack:
+                                # refresh tracker and do tracking
+                                # return solidtrack mark
+                                solidtrack, bbox, detect_time = objtracker.updateTrack(image_cv)
+                                #print('track frame {}, time {}'.format(filecount+5,tracktime))
+                                trackcount+=1
+                                sumtime+=detect_time
+                            if solidtrack==False or trackcount==maxtrack:
+                                # detection
+                                # get bbox of leading car
+                                # if has leading car:
+                                    #reture solidtrack mark
+                                    #trackcount=0
+                                
+                                starttime=time.time()
+                                output_dict = sess.run(tensor_dict,feed_dict={image_tensor: np.expand_dims(image_np, 0)})
+                                detect_time=time.time()-starttime
+                                if filecount>0: # the first 5 images won't be counted for detection time
+                                    sumtime+=detect_time
+                                    print('processing time: {} s'.format(sumtime/filecount))
+                                    if filecount==chunksize:
+                                        timelist.append(sumtime/chunksize)
+                                        print('average time of current chunk: {}'.format(sumtime/filecount))
+                                        filecount=0
+                                        sumtime=0
+                                annotationdict = updateAnnotationDict(output_dict,
+                                                annotationdict,imagename,
+                                                im_width,im_height,max_class)
+                                # let solidtrack=True if has leading vehicle
+                                annotationdict, solidtrack, bbox = keepOnlyOneLeading(annotationdict,imagename)
+                                #print('detect frame {}, time {}'.format(filecount+5,detect_time))
+                                # update tracker
+                                if solidtrack:
+                                    objtracker.refreshTracker()
+                                    objtracker.updateTrack(image_cv,init=True,bbox=bbox)
+                                    trackcount=0
+                            # draw bbox and text and save img
+                            last_dist=drawBBoxNSave_Track(image_np,imagename,savepath,bbox,
+                                                last_dist,last_time,detect_time,
+                                                dist_estimator = dist_estimator,
+                                                saveimg_flag = saveimg_flag)
+                            distlist[imagename]=last_dist
+                            last_time=detect_time
+                            
+                timelist.append(sumtime/filecount)
+                # after done save all the annotation into json file, save the file
+                if not use_tracking:
+                    # save annotation if not using tracking
+                    with open(os.path.join(testimgpath,'annotation_'+folder+'_detection.json'),'w') as savefile:
+                        savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
+                
+                # save distance estimated from predictions or tracking
+                if not use_tracking:
+                    with open(os.path.join(testimgpath,'distance_'+folder+'_detection.json'),'w') as savefile:
+                        savefile.write(json.dumps(distlist, sort_keys = True, indent = 4))
+                else:
+                    with open(os.path.join(testimgpath,'distance_'+folder+'_tracking.json'),'w') as savefile:
+                        savefile.write(json.dumps(distlist, sort_keys = True, indent = 4))
+    return output_dict, annotationdict, timelist, distlist
+
+
             
 if __name__=='__main__':
     # pass the parameters
-    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/FrameImages
-    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes
     parser=argparse.ArgumentParser()
     parser.add_argument('--ckpt_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/ckpt_ssd_opt_300/export/frozen_inference_graph.pb', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/viewnyx/ckpt_ssd_opt_vnx_finetune/export/frozen_inference_graph.pb', 
                         help="select the file path for ckpt folder")
+    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/viewnyx/ckpt_ssd_opt_300/export/frozen_inference_graph.pb
+    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/viewnyx/ckpt_ssd_opt_vnx_finetune/export/frozen_inference_graph.pb
     parser.add_argument('--label_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/tf-object-detection-api/research/viewnyx/data/class_labels.pbtxt', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/viewnyx/data/class_labels.pbtxt', 
                         help="select the file path for class labels")
     parser.add_argument('--testimg_path',type=str,
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC',
                         help='path to the images to be tested')
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k
-    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k
+    # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes
-    parser.add_argument('--val_only', type=bool, default=True,
+    parser.add_argument('--val_only', type=bool, default=False,
                         help="run model on val set only if True, this will require\
-                         that you have a folder with 'val' in its name")
+                         that you have a folder with 'val' in its name. set this as False\
+                         when debuging with some random folder names")
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=1,
+    parser.add_argument('--folder_number',type=int, default=100,
                         help='set how many folders will be processed')
     parser.add_argument('--saveimg_flag', type=bool, default=True,
                         help="flag for saving detection result or not, default as True")
-    parser.add_argument('--output_thresh', type=float, default=0.05,
+    parser.add_argument('--output_thresh', type=float, default=0.10,
                         help='threshold of score for output the detected bbxs (default=0.05)')
     parser.add_argument('--cam_calibration_path',type=str,
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/cam_mapping_viewnyx.txt',
                         help='filepath of pixel-distance mapping, use None is not needed')
     parser.add_argument('--use_tracking',type=bool, default=False,
                         help='use tracking to boost processing speed or not, default is false')
-    parser.add_argument('--show_leading',type=bool,default=False,
+    parser.add_argument('--show_leading',type=bool,default=True,
                         help='show leading vehicle in red bbox if true, in green if false.')
+    parser.add_argument('--save_raw_output',type=bool,default=False,
+                        help='if true, save raw output in .npz format.')
     args = parser.parse_args()
     
     ckptpath = args.ckpt_path
@@ -668,6 +708,7 @@ if __name__=='__main__':
     outputthresh=args.output_thresh
     usetracking=args.use_tracking
     showleading=args.show_leading
+    saveraw=args.save_raw_output
     
         
     IMAGE_SIZE = (12, 8)# Size, in inches, of the output images.
@@ -706,7 +747,7 @@ if __name__=='__main__':
     
     # detection by function
     starttime=time.time()
-    output_dict, jsondict, average_detection_time =detectMultipleImages(
+    output_dict, jsondict, average_detection_time, distance_list =detectMultipleImages(
                              detection_graph, 
                              category_index=category_index, 
                              testimgpath=testimgpath, 
@@ -717,13 +758,16 @@ if __name__=='__main__':
                              dist_estimator=dist_estimator,
                              use_tracking=usetracking,
                              val_only=valonly,
-                             show_leading=showleading)
+                             show_leading=showleading,
+                             customNMS=True,
+                             save_raw=saveraw)
     endtime=time.time()
     if usetracking:
         print('leading vehicle detection with tracking')
     else:
         print('frame by frame leading vehicle detection')
     print('\n processing finished, total time:{} s'.format(endtime-starttime))
-    print('average processing time is {} s per frame'.format(average_detection_time))
+    print('for each chunk, average processing time per frame is:')
+    print(average_detection_time)
 
 ''' End of File '''
