@@ -161,6 +161,12 @@ def updateAnnotationDict_Raw(output_dict,annotationdict,
                          imagename,im_width,im_height,
                          max_class,category_index,
                          outputthresh=0.05,IOUthresh=0.5):
+    """
+    update annotation dictionary with raw box lacations and
+    scores using my NMS
+    
+    """
+    
     # loading raw result from model
     boxes=output_dict['Postprocessor/raw_box_locations'][0]
     scores=output_dict['Postprocessor/raw_box_scores'][0]
@@ -202,8 +208,45 @@ def updateAnnotationDict_Raw(output_dict,annotationdict,
         
     return annotationdict, boxes, scores
 
+def updateAnnotationDict_Track(annotationdict,imagename,bbox):
+    """
+    update annotation dictionary using the result of object
+    tracker. only save one 'leading' bbox into annotation.
+    
+    bbox format:[xmin,ymin,width,height]
+    
+    this is not for detection!
+    
+    """
+    im_width=640
+    im_height=480
+    annotationdict[imagename]={}
+    annotationdict[imagename]['name']=imagename
+    annotationdict[imagename]['width']=im_width
+    annotationdict[imagename]['height']=im_height
+    annotationdict[imagename]['annotations']=[]
+    
+    annodict={'id':0,
+             'label':'car',
+             'category':'leading',
+             'x':round(bbox[0]),
+             'y':round(bbox[1]),
+             'width':round(bbox[2]),
+             'height':round(bbox[3]),
+             'shape':['box',1]
+            }
+    annotationdict[imagename]['annotations'].append(annodict)
+    
+    
+    return annotationdict
+
 def updateAnnotationDict(output_dict,annotationdict,imagename,im_width,im_height,
                          max_class):
+    """
+    update the annotation dictionary with standard built-in 
+    NMS in the object detecton API
+    
+    """
     # all outputs are float32 numpy arrays, so convert types as appropriate
     output_dict['num_detections'] = int(output_dict['num_detections'][0])
     output_dict['detection_classes'] = output_dict['detection_classes'][0].astype(np.uint8)
@@ -448,7 +491,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                          foldernumber, outputthresh=0.5, saveimg_flag=True,
                          max_class=8, dist_estimator=None, use_tracking=False,
                          val_only=True, show_leading=False, customNMS=True,
-                         save_raw=False):
+                         save_raw=False, calibration_code=''):
     '''
     load the frozen graph (model) and run detection among all the images
     
@@ -480,7 +523,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
     if use_tracking:
         objtracker=track_obj.ObjTracker()
         objtracker.buildTracker()
-        maxtrack=10 # switch to detection when reach max track frame
+        maxtrack=100 # switch to detection when reach max track frame
         print('detection-tracking scheme is used')
     print('chunk size is {} images'.format(chunksize))
     
@@ -599,6 +642,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                 # return solidtrack mark
                                 solidtrack, bbox, detect_time = objtracker.updateTrack(image_cv)
                                 #print('track frame {}, time {}'.format(filecount+5,tracktime))
+                                annotationdict = updateAnnotationDict_Track(annotationdict,imagename,bbox)
                                 trackcount+=1
                                 sumtime+=detect_time
                             if solidtrack==False or trackcount==maxtrack:
@@ -619,9 +663,15 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                         print('average time of current chunk: {}'.format(sumtime/filecount))
                                         filecount=0
                                         sumtime=0
-                                annotationdict = updateAnnotationDict(output_dict,
-                                                annotationdict,imagename,
-                                                im_width,im_height,max_class)
+                                if not customNMS:
+                                    annotationdict = updateAnnotationDict(output_dict,
+                                                    annotationdict,imagename,
+                                                    im_width,im_height,max_class)
+                                else:
+                                    annotationdict, _ ,_ = updateAnnotationDict_Raw(output_dict,annotationdict,
+                                                              imagename,im_width,im_height,
+                                                              max_class,category_index,
+                                                              outputthresh=outputthresh,IOUthresh=0.5)
                                 # let solidtrack=True if has leading vehicle
                                 annotationdict, solidtrack, bbox = keepOnlyOneLeading(annotationdict,imagename)
                                 #print('detect frame {}, time {}'.format(filecount+5,detect_time))
@@ -642,15 +692,19 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                 # after done save all the annotation into json file, save the file
                 if not use_tracking:
                     # save annotation if not using tracking
-                    with open(os.path.join(testimgpath,'annotation_'+folder+'_detection.json'),'w') as savefile:
+                    with open(os.path.join(testimgpath,'annotation_{}_detection.json'.format(folder)),'w') as savefile:
+                        savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
+                else:
+                    # save annotation if using tracking
+                    with open(os.path.join(testimgpath,'annotation_{}_tracking.json'.format(folder)),'w') as savefile:
                         savefile.write(json.dumps(annotationdict, sort_keys = True, indent = 4))
                 
                 # save distance estimated from predictions or tracking
                 if not use_tracking:
-                    with open(os.path.join(testimgpath,'distance_'+folder+'_detection.json'),'w') as savefile:
+                    with open(os.path.join(testimgpath,'distance_{}_detection{}.json'.format(folder,calibration_code)),'w') as savefile:
                         savefile.write(json.dumps(distlist, sort_keys = True, indent = 4))
                 else:
-                    with open(os.path.join(testimgpath,'distance_'+folder+'_tracking.json'),'w') as savefile:
+                    with open(os.path.join(testimgpath,'distance_{}_tracking{}.json'.format(folder,calibration_code)),'w') as savefile:
                         savefile.write(json.dumps(distlist, sort_keys = True, indent = 4))
     return output_dict, annotationdict, timelist, distlist
 
@@ -681,14 +735,24 @@ if __name__=='__main__':
                         help="set number of classes (default as 1)")
     parser.add_argument('--folder_number',type=int, default=100,
                         help='set how many folders will be processed')
-    parser.add_argument('--saveimg_flag', type=bool, default=True,
+    parser.add_argument('--saveimg_flag', type=bool, default=False,
                         help="flag for saving detection result or not, default as True")
-    parser.add_argument('--output_thresh', type=float, default=0.10,
+    parser.add_argument('--output_thresh', type=float, default=0.1,
                         help='threshold of score for output the detected bbxs (default=0.05)')
     parser.add_argument('--cam_calibration_path',type=str,
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/cam_mapping_viewnyx.txt',
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/viewnyx_160.txt',
                         help='filepath of pixel-distance mapping, use None is not needed')
-    parser.add_argument('--use_tracking',type=bool, default=False,
+    # cam_mapping_viewnyx.txt # this is for demos
+    # viewnyx_140.txt 
+    # viewnyx_150.txt
+    # viewnyx_160.txt # this is for calculating detection/tracking mIOU
+    # viewnyx_170.txt
+    # viewnyx_180.txt
+    # viewnyx_190.txt
+    # viewnyx_200.txt
+    # viewnyx_210.txt
+    # viewnyx_220.txt
+    parser.add_argument('--use_tracking',type=bool, default=True,
                         help='use tracking to boost processing speed or not, default is false')
     parser.add_argument('--show_leading',type=bool,default=True,
                         help='show leading vehicle in red bbox if true, in green if false.')
@@ -718,6 +782,7 @@ if __name__=='__main__':
         dist_estimator.setWidthReference(1600)
         mapping=dist_estimator.loadMappingFunc(filepath=camcalpath)
         #result=dist_estimator.estimateDistance(120)
+        calibrationcode='_'+camcalpath.split('_')[1].split('.')[0]
     
     # reset for debugging
     tf.reset_default_graph()
@@ -760,7 +825,8 @@ if __name__=='__main__':
                              val_only=valonly,
                              show_leading=showleading,
                              customNMS=True,
-                             save_raw=saveraw)
+                             save_raw=saveraw,
+                             calibration_code=calibrationcode)
     endtime=time.time()
     if usetracking:
         print('leading vehicle detection with tracking')
@@ -768,6 +834,9 @@ if __name__=='__main__':
         print('frame by frame leading vehicle detection')
     print('\n processing finished, total time:{} s'.format(endtime-starttime))
     print('for each chunk, average processing time per frame is:')
-    print(average_detection_time)
+    print('average detection time per chunk:')
+    for i in average_detection_time:
+        print(i)
+    
 
 ''' End of File '''
