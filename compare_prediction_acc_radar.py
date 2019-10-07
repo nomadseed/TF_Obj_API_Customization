@@ -3,7 +3,14 @@
 Created on Mon Sep 16 13:11:27 2019
 
 load acc radar data (in vsf format) and prediction result, compare the distance
-estimation error
+estimation error, compare the miss rate (to be done)
+
+definition about miss rates:
+    prediction miss rate: compare the predicted bounding box and ground truth
+        boxes.
+    acc radar miss rate: draw a central line as the path of radar beam, check 
+        if the beam hit the leading vehicle in ground truth. this method won't
+        be accurate.
 
 @author: Wen Wen
 """
@@ -12,6 +19,8 @@ import numpy as np
 import os
 import json
 from matplotlib import pyplot as plt
+
+import check_performance as chp
 
 def parseString2ArrayExtra(filename, string):
     '''
@@ -57,6 +66,11 @@ def parseString2ArrayExtra(filename, string):
     return header, table_2d
 
 def loadAccData(accpath):
+    """
+    load ACC radar data into dictionary
+    
+    """
+    
     acclist=os.listdir(accpath)
     accdict={}
     for accname in acclist:
@@ -71,25 +85,42 @@ def loadAccData(accpath):
             accdict[accname.split('.')[0]]=accexp
     return accdict  
 
-def loadJsonResults(filepath, jsonlabel=''):
+def loadJsonResults(filepath, annotationflag=True, jsonlabel=''):
     """
     load prediction and tracking results in json format
     
     """
-    detectdict={}
-    trackdict={}
+    detectdist={}
+    trackdist={}
+    detectanno={}
+    trackanno={}
+    gtanno={}
     filelist=os.listdir(filepath)
     print('loading prediction & tracking files')
-    for filename in filelist:
-        if jsonlabel in filename and 'distance' in filename:
-            if 'detection' in filename:
-                # loading detection results
-                detectdict[filename]=json.load(open(os.path.join(filepath,filename)))
-            elif 'tracking' in filename:
-                # loading tracking results
-                trackdict[filename]=json.load(open(os.path.join(filepath,filename)))
-    print('loading completed')
-    return detectdict, trackdict
+    if not annotationflag:
+        for filename in filelist:
+            if jsonlabel in filename and 'distance' in filename:
+                if 'detection' in filename:
+                    # loading detection results
+                    detectdist[filename]=json.load(open(os.path.join(filepath,filename)))
+                elif 'tracking' in filename:
+                    # loading tracking results
+                    trackdist[filename]=json.load(open(os.path.join(filepath,filename)))
+    if annotationflag:
+        for filename in filelist:
+            if 'annotation' in filename:
+                # use 140 only for annotation, they dont change anyway
+                if 'detection' in filename:
+                    # loading detection results
+                    detectanno[filename]=json.load(open(os.path.join(filepath,filename)))
+                elif 'tracking' in filename:
+                    # loading tracking results
+                    trackanno[filename]=json.load(open(os.path.join(filepath,filename)))
+                else:
+                    # loading ground truth annotation
+                    gtanno[filename]=json.load(open(os.path.join(filepath,filename)))
+        print('loading completed')
+    return detectdist, trackdist, detectanno, trackanno, gtanno
 
 def calculateError(acc_table, detect_table, track_table, jsonlabel='',
                    error_type='percent',round_flag=True):
@@ -113,6 +144,17 @@ def calculateError(acc_table, detect_table, track_table, jsonlabel='',
     
     the ACC distance is always an integer, unit is meters. both the estimated 
     distance from detection or tracking have float precision, unit is milimeters
+    
+    args:
+        acc_table: the table includes ACC radar data
+        detect_table: the table includes detection results
+        track_table: the table includes tracking resutls
+        jsonlabel: the label of json files to be loaded and calculated
+        error_type: the approach of defining errors. use 'abs' for error in 
+            absolute value, use 'percent' for error in percentage.
+        round_flag: if True, round the detection result from float to int 
+            precision
+        
     
     """
     detect_error_dict = {'0':{},'5':{},'10':{},'20':{},'30':{},'40':{},'50':{},'all':{}}
@@ -197,6 +239,12 @@ def plotErrors(statdict,jsonlabellist,savepath,titleattach=''):
     """
     plot a single error figure for 
     
+    args:
+        statdict: dictionary for all the statistics of errors
+        jsonlabellist: label list of the json files
+        savepath: path to save plots
+        titleattach: the attached string for saving plots
+    
     """
     # get x_label from jsonlabellist
     x_label=[int(i.split('_')[1]) for i in jsonlabellist]
@@ -239,10 +287,59 @@ def plotErrors(statdict,jsonlabellist,savepath,titleattach=''):
         plt.show()
     return 0 
 
+def calculateMRs(gtpath,testpath,dtype='detection'):
+    """
+    calculate miss rates for detection and acc radar data
+    
+    TBD
+    
+    """
+    gtdict={}
+    filelist=os.listdir(gtpath)
+    print('loading prediction & tracking files')
+    for filename in filelist:
+        if 'annotation' in filename:
+            gtdict[filename]=json.load(open(os.path.join(gtpath,filename)))
+        
+    if dtype=='detection':
+        mrs=9999
+    elif dtype=='radar':
+        mrs=9999
+    
+    return gtdict,mrs
+
+def getMeanIoU(gtanno, testanno, label='detection'):
+    """
+    get mean IoU between tested annotation dictionary and ground truth 
+    dictionary
+    
+    the gtanno might miss some annotation when there is no vehicles in image
+    
+    """
+    ioulist=[]
+    for jsonname in gtanno:
+        if label=='detection':
+            testname=jsonname.split('.')[0]+'_detection.json'
+        elif label =='tracking':
+            testname=jsonname.split('.')[0]+'_tracking.json'
+        for imgname in gtanno[jsonname]:
+            # only calculate annotations in ground truth
+            for bbox in gtanno[jsonname][imgname]['annotations']:
+                if bbox['category']=='leading':
+                    bbox_benchmark=bbox
+            for bbox in testanno[testname][imgname]['annotations']:
+                if bbox['category']=='leading':
+                    bbox_test=bbox
+            ioulist.append(chp.getIoU(bbox_benchmark,bbox_test))
+    miou=np.mean(np.array(ioulist))
+    return ioulist, miou
 
 if __name__=='__main__':
     accpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_Videos'
-    predpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC'
+    trackpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_tracking/5'
+    # 5 10 15 20 50 # 100 # for trackpath
+    detectpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC'
+    groundtruthpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_groundtruth/leadingonly'
     jsonlabellist=['_140','_150','_160','_170',
                    '_180','_190','_200','_210','_220']
     error_type=['abs','percent']
@@ -250,29 +347,49 @@ if __name__=='__main__':
     statdict = {}
     # load acc data
     acc_table = loadAccData(accpath)
+    # load groundtruth annotation data
+    _,_,_,_,gt_anno = loadJsonResults(groundtruthpath,annotationflag=True)
+    # load detection and tracking annotation
+    _,_,detect_anno,_,_=loadJsonResults(detectpath,annotationflag=True)
+    _,_,_,track_anno,_=loadJsonResults(trackpath,annotationflag=True)
     
+    # Miss Rate of detection & radar
     # evaluate miss rate of detection
+# =============================================================================
+#     gtdict, MRs_detect = calculateMRs(gtpath=groundtruthpath,
+#                               testpath=predpath,
+#                               dtype='detection')
+# =============================================================================
+    # evaluate miss rate of acc radar
     
-    # evaluate miss rate of 
+    # mIoU of detection/detection+tracking
+    ioulist_detection, miou_detection = getMeanIoU(gt_anno,detect_anno,
+                                                   label='detection')
+    ioulist_tracking, miou_tracking = getMeanIoU(gt_anno,track_anno,
+                                                 label='tracking')
     
-    # evaluations
-    for etype in error_type:
-        # evaluate estimation results of all the baseline widths
-        for jsonlabel in jsonlabellist:
-            # load prediction results
-            detect_table, track_table = loadJsonResults(predpath, jsonlabel)
-            
-            # calculate detection/tracking error with ACC radar as ground truth
-            detect_error, track_error = calculateError(acc_table, detect_table, 
-                                                       track_table, jsonlabel,
-                                                       error_type=etype,
-                                                       round_flag=True)
-            # calculate mean, max, min, MSE of errors
-            statdict[jsonlabel] = errorStatistics(detect_error)
-        
-        # plot figures
-        plotErrors(statdict,jsonlabellist,savepath=predpath,titleattach=etype)
-    
+    # distance estimation errors 
+# =============================================================================
+#     for etype in error_type:
+#         # evaluate estimation results of all the baseline widths
+#         for jsonlabel in jsonlabellist:
+#             # load prediction results
+#             detect_table, track_table,_,_,_ = loadJsonResults(predpath, 
+#                                                               annotationflag=False,
+#                                                               jsonlabel)
+#             
+#             # calculate detection/tracking error with ACC radar as ground truth
+#             detect_error, track_error = calculateError(acc_table, detect_table, 
+#                                                        track_table, jsonlabel,
+#                                                        error_type=etype,
+#                                                        round_flag=True)
+#             # calculate mean, max, min, MSE of errors
+#             statdict[jsonlabel] = errorStatistics(detect_error)
+#         
+#         # plot figures
+#         plotErrors(statdict,jsonlabellist,savepath=predpath,titleattach=etype)
+#     
+# =============================================================================
     
     
 
