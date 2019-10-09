@@ -155,6 +155,12 @@ def calculateError(acc_table, detect_table, track_table, jsonlabel='',
         round_flag: if True, round the detection result from float to int 
             precision
         
+    outputs:
+        detect_error_dict: dictionary includes detection error. for each range
+            of distance, create a dict to save a list in the format of 
+            [error, detection distance, acc radar distance]
+        track_error_dict: dictionary includes tracking error, having the same
+            format as detect_error_dict
     
     """
     detect_error_dict = {'0':{},'5':{},'10':{},'20':{},'30':{},'40':{},'50':{},'all':{}}
@@ -181,10 +187,10 @@ def calculateError(acc_table, detect_table, track_table, jsonlabel='',
                     # valid distance in ACC and estimation data
                     if round_flag:
                         detect_dist=round(detect_dist/1000.0)
-                        error = (detect_dist-acc_dist)/acc_dist
+                        error = abs((detect_dist-acc_dist)/acc_dist)
                     else:
                         detect_dist=detect_dist/1000.0
-                        error = (detect_dist-acc_dist)/acc_dist
+                        error = abs((detect_dist-acc_dist)/acc_dist)
                 elif error_type=='abs':
                     detect_dist=round(detect_dist/1000.0)
                     error = abs(detect_dist-acc_dist)
@@ -334,17 +340,60 @@ def getMeanIoU(gtanno, testanno, label='detection'):
     miou=np.mean(np.array(ioulist))
     return ioulist, miou
 
+def collectError(errordict,jsonlabel,detect_error,track_error):
+    """
+    collect detection and tracking error into a dictionary for further printing
+    
+    args:
+        errordict: the input and the output dict
+        jsonlabel: the key in the dict for saving detection error and tracking
+            error
+        detect_error: detection error
+        track_error: tracking error
+    """
+    errordict[jsonlabel]={'detect':detect_error,'tracking':track_error}
+    return errordict
+
+def saveErrorTXT(savepath,errordict):
+    """
+    save error in txt format, each distance in errordict (e.g. '10') will
+    have a column in txt
+    
+    """
+    errors={'detect':{}}
+    plot_label_dist = ['all','0','5','10','20','30','40','50']
+    for plotlabel in plot_label_dist:
+        errors['detect'][plotlabel]=[]
+        #for jsonlabel in errordict:
+        jsonlabel='_180'
+        for imgname in errordict[jsonlabel]['detect'][plotlabel]:
+            # save only the first column (error) to array
+            errors['detect'][plotlabel].append(errordict[jsonlabel]['detect'][plotlabel][imgname][0])
+            
+    import xlsxwriter
+    workbook = xlsxwriter.Workbook(os.path.join(savepath,'detect.xlsx'))
+    worksheet = workbook.add_worksheet()
+    col = 0
+    for dist in errors['detect']:
+        worksheet.write(0, col, dist)
+        for row in range(len(errors['detect'][dist])):
+            worksheet.write(row+1, col, errors['detect'][dist][row])
+        col+=1
+
+    return errors
+
 if __name__=='__main__':
     accpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_Videos'
-    trackpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_tracking/5'
+    trackpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_tracking/15'
     # 5 10 15 20 50 # 100 # for trackpath
     detectpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC'
     groundtruthpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_groundtruth/leadingonly'
+    savepath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_error'
     jsonlabellist=['_140','_150','_160','_170',
                    '_180','_190','_200','_210','_220']
     error_type=['abs','percent']
     
-    statdict = {}
+    
     # load acc data
     acc_table = loadAccData(accpath)
     # load groundtruth annotation data
@@ -362,6 +411,7 @@ if __name__=='__main__':
 # =============================================================================
     # evaluate miss rate of acc radar
     
+
     # mIoU of detection/detection+tracking
     ioulist_detection, miou_detection = getMeanIoU(gt_anno,detect_anno,
                                                    label='detection')
@@ -369,27 +419,34 @@ if __name__=='__main__':
                                                  label='tracking')
     
     # distance estimation errors 
-# =============================================================================
-#     for etype in error_type:
-#         # evaluate estimation results of all the baseline widths
-#         for jsonlabel in jsonlabellist:
-#             # load prediction results
-#             detect_table, track_table,_,_,_ = loadJsonResults(predpath, 
-#                                                               annotationflag=False,
-#                                                               jsonlabel)
-#             
-#             # calculate detection/tracking error with ACC radar as ground truth
-#             detect_error, track_error = calculateError(acc_table, detect_table, 
-#                                                        track_table, jsonlabel,
-#                                                        error_type=etype,
-#                                                        round_flag=True)
-#             # calculate mean, max, min, MSE of errors
-#             statdict[jsonlabel] = errorStatistics(detect_error)
-#         
-#         # plot figures
-#         plotErrors(statdict,jsonlabellist,savepath=predpath,titleattach=etype)
-#     
-# =============================================================================
+    statdict = {}
+    errordict = {}
+    for etype in error_type:
+        # evaluate estimation results of all the baseline widths
+        for jsonlabel in jsonlabellist:
+            # load prediction results
+            _,track_table,_,_,_ = loadJsonResults(trackpath, 
+                                                              annotationflag=False,
+                                                              jsonlabel=jsonlabel)
+            detect_table,_,_,_,_ = loadJsonResults(detectpath, 
+                                                              annotationflag=False,
+                                                              jsonlabel=jsonlabel)
+            
+            # calculate detection/tracking error with ACC radar as ground truth
+            detect_error, track_error = calculateError(acc_table, detect_table, 
+                                                       track_table, jsonlabel,
+                                                       error_type=etype,
+                                                       round_flag=True)
+            errordict = collectError(errordict,jsonlabel,detect_error,track_error)
+            
+            # calculate mean, max, min, MSE of errors
+            statdict[jsonlabel] = errorStatistics(detect_error)
+        
+        # plot figures
+        #plotErrors(statdict,jsonlabellist,savepath=detectpath,titleattach=etype)
+    
+    # save errordict in multiple txt files for excel plotting
+    errors = saveErrorTXT(savepath,errordict)
     
     
 
