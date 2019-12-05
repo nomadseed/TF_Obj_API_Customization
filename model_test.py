@@ -316,7 +316,7 @@ def keepOnlyOneLeading(annotationdict,imagename):
     return annotationdict, not leadingflag, bbox
 
 def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
-                  dist_estimator=None, show_leading=False):
+                  dist_estimator=None, show_leading=False,show_dist=True):
     img=cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
     font=cv2.FONT_HERSHEY_SIMPLEX
     linetype=cv2.LINE_AA
@@ -335,7 +335,9 @@ def drawBBoxNSave(image_np,imagename,savepath,annotationdict,drawside=False,
             if dist_estimator is not None:
                 bl=(annotationdict[imagename]['annotations'][i]['x'],annotationdict[imagename]['annotations'][i]['y']+annotationdict[imagename]['annotations'][i]['height']-4)
                 distance=dist_estimator.estimateDistance(width=annotationdict[imagename]['annotations'][i]['width'])
-                cv2.putText(img, 'd={:.2f}'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
+                if show_dist:
+                    #cv2.putText(img, 'd={:.2f}'.format(distance/1000), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
+                    cv2.putText(img, 'w={} pels'.format(annotationdict[imagename]['annotations'][i]['width']), bl, font, 0.5, (255,255,255), 1, lineType=linetype)
         elif drawside:
             # draw sideway cars in green
             img=cv2.rectangle(img,tl,br,(0,255,0),linewidth) # green
@@ -490,7 +492,7 @@ class DistEstimator():
 def detectMultipleImages(detection_graph, category_index, testimgpath, 
                          foldernumber, outputthresh=0.5, saveimg_flag=True,
                          max_class=8, dist_estimator=None, use_tracking=False,
-                         val_only=True, show_leading=False, customNMS=True,
+                         folder_only='', show_leading=False, customNMS=True,
                          save_raw=False, calibration_code=''):
     '''
     load the frozen graph (model) and run detection among all the images
@@ -523,7 +525,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
     if use_tracking:
         objtracker=track_obj.ObjTracker()
         objtracker.buildTracker()
-        maxtrack=100 # switch to detection when reach max track frame
+        maxtrack=10 # switch to detection when reach max track frame
         print('detection-tracking scheme is used')
     print('chunk size is {} images'.format(chunksize))
     
@@ -555,7 +557,7 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                     continue
                 
                 # run model for val set only
-                if val_only and 'val' not in folder:
+                if folder_only!='' and folder_only not in folder:
                     continue
                 
                 # for debug, set the number of folders to be processed
@@ -633,7 +635,8 @@ def detectMultipleImages(detection_graph, category_index, testimgpath,
                                 distlist[imagename] = drawBBoxNSave(image_np,imagename,
                                         savepath,annotationdict,
                                         drawside=True,dist_estimator=dist_estimator,
-                                        show_leading=show_leading)
+                                        show_leading=show_leading,
+                                        show_dist=True)
                                 
                         else:
                             # Run detection-tracking inference
@@ -727,17 +730,18 @@ if __name__=='__main__':
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/debug/bdd100k/images/100k
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC
     # D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part3_videoframes
-    parser.add_argument('--val_only', type=bool, default=False,
-                        help="run model on val set only if True, this will require\
-                         that you have a folder with 'val' in its name. set this as False\
+    parser.add_argument('--folder_only', type=str, default='3652',
+                        help="run model on a specific set only if not null, \
+                        this will require that you have a folder with 'A String'\
+                        in its name. set this as ''\
                          when debuging with some random folder names")
     parser.add_argument('--class_number', type=int, default=1,
                         help="set number of classes (default as 1)")
-    parser.add_argument('--folder_number',type=int, default=100,
+    parser.add_argument('--folder_number',type=int, default=10,
                         help='set how many folders will be processed')
-    parser.add_argument('--saveimg_flag', type=bool, default=False,
+    parser.add_argument('--saveimg_flag', type=bool, default=True,
                         help="flag for saving detection result or not, default as True")
-    parser.add_argument('--output_thresh', type=float, default=0.1,
+    parser.add_argument('--output_thresh', type=float, default=0.2,
                         help='threshold of score for output the detected bbxs (default=0.05)')
     parser.add_argument('--cam_calibration_path',type=str,
                         default='D:/Private Manager/Personal File/uOttawa/Lab works/2019 winter/CameraCalibration/viewnyx_160.txt',
@@ -752,7 +756,7 @@ if __name__=='__main__':
     # viewnyx_200.txt
     # viewnyx_210.txt
     # viewnyx_220.txt
-    parser.add_argument('--use_tracking',type=bool, default=True,
+    parser.add_argument('--use_tracking',type=bool, default=False,
                         help='use tracking to boost processing speed or not, default is false')
     parser.add_argument('--show_leading',type=bool,default=True,
                         help='show leading vehicle in red bbox if true, in green if false.')
@@ -765,7 +769,7 @@ if __name__=='__main__':
     camcalpath = args.cam_calibration_path
     classnumber = args.class_number
     testimgpath = args.testimg_path
-    valonly=args.val_only
+    folderonly=args.folder_only
     foldernumber=args.folder_number
     foldercount=0
     saveflag=args.saveimg_flag
@@ -822,7 +826,7 @@ if __name__=='__main__':
                              max_class=classnumber,
                              dist_estimator=dist_estimator,
                              use_tracking=usetracking,
-                             val_only=valonly,
+                             folder_only=folderonly,
                              show_leading=showleading,
                              customNMS=True,
                              save_raw=saveraw,
