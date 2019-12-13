@@ -163,24 +163,63 @@ def calculateError(acc_table, detect_table, track_table, jsonlabel='',
             format as detect_error_dict
     
     """
-    detect_error_dict = {'0':{},'5':{},'10':{},'20':{},'30':{},'40':{},'50':{},'all':{}}
-    track_error_dict = {'0':{},'5':{},'10':{},'20':{},'30':{},'40':{},'50':{},'all':{}}
+    detect_error_dict = {'0-5':{},'5-10':{},'10-20':{},'20-30':{},
+                         '30-40':{},'40-50':{},'>50':{},'all':{}}
+    track_error_dict = {'0-5':{},'5-10':{},'10-20':{},'20-30':{},
+                         '30-40':{},'40-50':{},'>50':{},'all':{}}
     for foldername in acc_table:
         for frameinfo in acc_table[foldername]['table']:
             frame_index = int(frameinfo[0])-1 # convert str to int
             acc_dist = float(frameinfo[6]) # 0-255 meters
             # load estimated distances
             detect_name='distance_{}_detection{}.json'.format(foldername,jsonlabel)
+            track_name='distance_{}_tracking{}.json'.format(foldername,jsonlabel)
             if frame_index>=len(detect_table[detect_name]):
                 continue # sometimes the ACC data has 1 more frame than video frames, skip them
             imagename=foldername+'_'+str(frame_index).zfill(5)+'.png'
             detect_dist = detect_table[detect_name][imagename]
-            
+            track_dist = track_table[track_name][imagename]
                 
             """
             load tracking results, to be done
             """
+            # calculate error in percentage and save
+            if acc_dist != -1 and track_dist!=999999: 
+                if error_type=='percent':
+                    # valid distance in ACC and estimation data
+                    if round_flag:
+                        track_dist=round(track_dist/1000.0)
+                        error = abs((track_dist-acc_dist)/acc_dist)
+                    else:
+                        track_dist=track_dist/1000.0
+                        error = abs((track_dist-acc_dist)/acc_dist)
+                elif error_type=='abs':
+                    track_dist=round(track_dist/1000.0)
+                    error = abs(track_dist-acc_dist)
+                # union set
+                if acc_dist>0:
+                    track_error_dict['all'][imagename]=[error, track_dist,acc_dist]
+                
+                # grouped distances
+                if acc_dist>50:
+                    track_error_dict['>50'][imagename]=[error, track_dist,acc_dist]
+                elif acc_dist>40:
+                    track_error_dict['40-50'][imagename]=[error, track_dist,acc_dist]
+                elif acc_dist>30:
+                    track_error_dict['30-40'][imagename]=[error, track_dist,acc_dist]
+                elif acc_dist>20:
+                    track_error_dict['20-30'][imagename]=[error, track_dist,acc_dist]
+                elif acc_dist>10:
+                    track_error_dict['10-20'][imagename]=[error, track_dist,acc_dist]
+                elif acc_dist>5:
+                    track_error_dict['5-10'][imagename]=[error, track_dist,acc_dist]
+                elif acc_dist>0:
+                    track_error_dict['0-5'][imagename]=[error, track_dist,acc_dist]
             
+            
+            """
+            load detection results, save error in abs or percentage
+            """
             # calculate error in percentage and save
             if acc_dist != -1 and detect_dist!=999999: 
                 if error_type=='percent':
@@ -200,19 +239,19 @@ def calculateError(acc_table, detect_table, track_table, jsonlabel='',
                 
                 # grouped distances
                 if acc_dist>50:
-                    detect_error_dict['50'][imagename]=[error, detect_dist,acc_dist]
+                    detect_error_dict['>50'][imagename]=[error, detect_dist,acc_dist]
                 elif acc_dist>40:
-                    detect_error_dict['40'][imagename]=[error, detect_dist,acc_dist]
+                    detect_error_dict['40-50'][imagename]=[error, detect_dist,acc_dist]
                 elif acc_dist>30:
-                    detect_error_dict['30'][imagename]=[error, detect_dist,acc_dist]
+                    detect_error_dict['30-40'][imagename]=[error, detect_dist,acc_dist]
                 elif acc_dist>20:
-                    detect_error_dict['20'][imagename]=[error, detect_dist,acc_dist]
+                    detect_error_dict['20-30'][imagename]=[error, detect_dist,acc_dist]
                 elif acc_dist>10:
-                    detect_error_dict['10'][imagename]=[error, detect_dist,acc_dist]
+                    detect_error_dict['10-20'][imagename]=[error, detect_dist,acc_dist]
                 elif acc_dist>5:
-                    detect_error_dict['5'][imagename]=[error, detect_dist,acc_dist]
+                    detect_error_dict['5-10'][imagename]=[error, detect_dist,acc_dist]
                 elif acc_dist>0:
-                    detect_error_dict['0'][imagename]=[error, detect_dist,acc_dist]
+                    detect_error_dict['0-5'][imagename]=[error, detect_dist,acc_dist]
     
     return detect_error_dict, track_error_dict
 
@@ -255,16 +294,17 @@ def plotErrors(statdict,jsonlabellist,savepath,titleattach=''):
     # get x_label from jsonlabellist
     x_label=[int(i.split('_')[1]) for i in jsonlabellist]
     
-    plot_label_dist = ['all','0','5','10','20','30','40','50']
+    plot_label_dist = ['all','0-5','5-10','10-20',
+                       '20-30','30-40','40-50','>50']
     plot_label_stat = ['mean','max','min','mse']
     legendlist={'all':  [1,         0,          0      ],
-                '0':    [0.14509804, 0.24705882, 0.81176471],
-                '5':    [0.14509804, 0.63921569, 0.81176471],
-                '10':   [0.81176471, 0.14509804, 0.68235294],
-                '20':   [0.02352941, 0.83529412, 0.73333333],
-                '30':   [0.31372549, 0.96470588, 0.05098039],
-                '40':   [0.88627451, 0.85490196, 0.03137255],
-                '50':   [0.96470588, 0.7372549 , 0.13333333]
+                '0-5':    [0.14509804, 0.24705882, 0.81176471],
+                '5-10':    [0.14509804, 0.63921569, 0.81176471],
+                '10-20':   [0.81176471, 0.14509804, 0.68235294],
+                '20-30':   [0.02352941, 0.83529412, 0.73333333],
+                '30-40':   [0.31372549, 0.96470588, 0.05098039],
+                '40-50':   [0.88627451, 0.85490196, 0.03137255],
+                '>50':   [0.96470588, 0.7372549 , 0.13333333]
             }
     legendloc={'mean':1,
                'max':1,
@@ -275,6 +315,7 @@ def plotErrors(statdict,jsonlabellist,savepath,titleattach=''):
     # plot mean error for all distances
     for status in plot_label_stat:
         plt.figure(figsize=(8,6),dpi=100)
+        plt.rc('font',size=16)
         for distance in plot_label_dist:
             errorlist=[]
             for label in x_label:
@@ -284,8 +325,8 @@ def plotErrors(statdict,jsonlabellist,savepath,titleattach=''):
                 plt.plot(x_label,errorlist,marker='*',markersize=15,color=legendlist[distance],label=distance)
             else:
                 plt.plot(x_label,errorlist,marker='o',color=legendlist[distance],label=distance)
-        plt.title('Distance Estimation Error -- {}, {}'.format(status.upper(),titleattach))
-        plt.xlabel('baseline vehicle width')
+        plt.title('Distance Error--{},{}'.format(status.upper(),titleattach))
+        plt.xlabel('baseline vehicle width (cm)')
         plt.ylabel('error')
         plt.legend(loc=legendloc[status])
         if savepath is not None:
@@ -340,6 +381,32 @@ def getMeanIoU(gtanno, testanno, label='detection'):
     miou=np.mean(np.array(ioulist))
     return ioulist, miou
 
+def getMeanWidthError(gtanno, testanno, label='detection'):
+    """
+    get mean width error between tested annotation dictionary and ground truth 
+    dictionary
+    
+    the gtanno might miss some annotation when there is no vehicles in image
+    
+    """
+    wlist=[]
+    for jsonname in gtanno:
+        if label=='detection':
+            testname=jsonname.split('.')[0]+'_detection.json'
+        elif label =='tracking':
+            testname=jsonname.split('.')[0]+'_tracking.json'
+        for imgname in gtanno[jsonname]:
+            # only calculate annotations in ground truth
+            for bbox in gtanno[jsonname][imgname]['annotations']:
+                if bbox['category']=='leading':
+                    bbox_benchmark=bbox
+            for bbox in testanno[testname][imgname]['annotations']:
+                if bbox['category']=='leading':
+                    bbox_test=bbox
+            wlist.append(abs(1-bbox_test['width']/bbox_benchmark['width']))
+    m_w_error=np.mean(np.array(wlist))
+    return wlist, m_w_error
+
 def collectError(errordict,jsonlabel,detect_error,track_error):
     """
     collect detection and tracking error into a dictionary for further printing
@@ -365,7 +432,7 @@ def saveErrorTXT(savepath,errordict):
     for plotlabel in plot_label_dist:
         errors['detect'][plotlabel]=[]
         #for jsonlabel in errordict:
-        jsonlabel='_180'
+        jsonlabel='_160'
         for imgname in errordict[jsonlabel]['detect'][plotlabel]:
             # save only the first column (error) to array
             errors['detect'][plotlabel].append(errordict[jsonlabel]['detect'][plotlabel][imgname][0])
@@ -384,14 +451,14 @@ def saveErrorTXT(savepath,errordict):
 
 if __name__=='__main__':
     accpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_Videos'
-    trackpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_tracking/15'
+    trackpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_tracking/10'
     # 5 10 15 20 50 # 100 # for trackpath
     detectpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC'
     groundtruthpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_groundtruth/leadingonly'
     savepath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_error'
     jsonlabellist=['_140','_150','_160','_170',
                    '_180','_190','_200','_210','_220']
-    error_type=['abs','percent']
+    error_type=['abs']#,'percent'
     
     
     # load acc data
@@ -418,14 +485,21 @@ if __name__=='__main__':
     ioulist_tracking, miou_tracking = getMeanIoU(gt_anno,track_anno,
                                                  label='tracking')
     
+    # mean width error of detection/detection+tracking (in percentage)
+    wlist_detection, mwe_detection= getMeanWidthError(gt_anno,detect_anno,
+                                                      label='detection')
+    wlist_tracking, mwe_tracking= getMeanWidthError(gt_anno,track_anno,
+                                                      label='tracking')
+    
     # distance estimation errors 
-    statdict = {}
+    detect_statdict = {}
+    track_statdict = {}
     errordict = {}
     for etype in error_type:
         # evaluate estimation results of all the baseline widths
         for jsonlabel in jsonlabellist:
             # load prediction results
-            _,track_table,_,_,_ = loadJsonResults(trackpath, 
+            _,track_table,_,_,_ = loadJsonResults(detectpath, 
                                                               annotationflag=False,
                                                               jsonlabel=jsonlabel)
             detect_table,_,_,_,_ = loadJsonResults(detectpath, 
@@ -440,13 +514,17 @@ if __name__=='__main__':
             errordict = collectError(errordict,jsonlabel,detect_error,track_error)
             
             # calculate mean, max, min, MSE of errors
-            statdict[jsonlabel] = errorStatistics(detect_error)
+            detect_statdict[jsonlabel] = errorStatistics(detect_error)
+            track_statdict[jsonlabel] = errorStatistics(track_error)
         
         # plot figures
-        #plotErrors(statdict,jsonlabellist,savepath=detectpath,titleattach=etype)
+        plotErrors(detect_statdict,jsonlabellist,
+                   savepath=detectpath,titleattach='D,'+etype)
+        plotErrors(track_statdict,jsonlabellist,
+                   savepath=trackpath,titleattach='D+T10,'+etype)
     
     # save errordict in multiple txt files for excel plotting
-    errors = saveErrorTXT(savepath,errordict)
+    #errors = saveErrorTXT(savepath,errordict)
     
     
 
