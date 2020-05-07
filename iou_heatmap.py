@@ -22,7 +22,7 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import check_performance as chp
 
 
-savedKmeanList={'ssd_opt_gt22':[
+savedKmeanList={'ssd-strip-gt22':[
                     [16,13],[23,15],[18,20],
                     [25,20],[50,23],[33,38],
                     [51,47],[68,68],[43,65],[110,34],
@@ -30,7 +30,7 @@ savedKmeanList={'ssd_opt_gt22':[
                     [146,126],[200,161],[216,96],[128,170],
                     [221,230],[180,280],[291,174],[271,260],[251,195]                    
                     ],
-                'ssd_clust23p':[
+                'ssd-regular-kmeans':[
                     [6,6],
                     [18,13],[11,10],
                     [33,27],[29,20],[17,22],
@@ -39,7 +39,7 @@ savedKmeanList={'ssd_opt_gt22':[
                     [84,84],[159,57],[120,134],[165,113],[109,63],[236,77],
                             [120,97],[231,161],[153,178],[83,112]
                     ],
-                'ssd_clust23p_gt22':[
+                'ssd-regular-kmeans-gt22':[
                     [17,15],
                     [26,20],[36,30],[22,29],[30,44],
                     [65,59],[44,61],[57,83],[48,43],[79,26],
@@ -53,7 +53,7 @@ savedKmeanList={'ssd_opt_gt22':[
                 # min_scale=0.2,
                 # max_scale=0.95
                 # aspect_ratios=(1.0, 2.0, 3.0, 1.0 / 2, 1.0 / 3)
-                'ssd_origin':[
+                'ssd-origin':[
                     [51, 51], [89, 89], [128, 128], [166, 166], [204, 204], 
                     [243, 243], [72, 36], [126, 63], [180, 90], [235, 117], 
                     [289, 144], [343, 171], [88, 29], [155, 51], [221, 73], 
@@ -61,7 +61,7 @@ savedKmeanList={'ssd_opt_gt22':[
                     [90, 180], [117, 235], [144, 289], [171, 343], [29, 88], 
                     [51, 155], [73, 221], [96, 288], [118, 354], [140, 421]
                     ],
-                'ssd_adjusted':[
+                'ssd-GPDF-gt22':[
                     [24,8], [45,14], [90,29], [ 150,48], [ 225,72], 
                     [ 450,144], [ 15,12], [ 29,23], [ 57,46], [ 95,76], 
                     [ 143,114], [ 285,228], [ 12,15], [ 23,29], [ 45,58], 
@@ -103,11 +103,11 @@ def get_bboxes(annotationdict):
             else:
                 for anno in annotationdict[foldername][imagename]['annotations']:
                     if anno['width'] and anno['height']:
-                        bboxlist.append([round(anno['width']*0.46875),round(anno['height']*0.625)])
+                        bboxlist.append([round(anno['height']*0.625),round(anno['width']*0.46875)])
                 
     return bboxlist
 
-def getIoUMats(KmeanList,boxes):
+def getIoUMats(KmeanList, boxes, fast=True):
     """
     given the centroids lists of kmeans result and ground truth boxes, compute
     the 300x300 iou matrix
@@ -115,18 +115,43 @@ def getIoUMats(KmeanList,boxes):
     """
     
     ioumat_dict={}
+    
     for model_name in KmeanList:
         centroids = savedKmeanList[model_name]
         ioumat=np.zeros([300,300])
+        meaniou=[]
         for [w,h] in boxes:
-            if ioumat[w,h]==0:# skip if already calculated (!=0)
+            # regulation for rounded indices
+            if w==300:
+                w=299
+            if h==300:
+                h=299
+            
+            # fast and slow methods
+            if fast:
+                if ioumat[w,h]==0:# skip if already calculated (!=0)
+                    bbx1={'x':0, 'y':0, 'width':w, 'height':h}
+                    ioulist=[]
+                    for [c_w,c_h] in centroids:
+                        bbx2={'x':0,'y':0,'width':c_w,'height':c_h}
+                        ioulist.append(chp.getIoU(bbx1,bbx2))
+                    ioumat[w,h]=max(ioulist)
+            else:
                 bbx1={'x':0, 'y':0, 'width':w, 'height':h}
                 ioulist=[]
                 for [c_w,c_h] in centroids:
                     bbx2={'x':0,'y':0,'width':c_w,'height':c_h}
                     ioulist.append(chp.getIoU(bbx1,bbx2))
-                ioumat[w,h]=max(ioulist)
+                iou=max(ioulist)
+                meaniou.append(iou)
+                ioumat[w,h]=iou
+                
+        # for each model, save iou matrix and print meaniou        
         ioumat_dict[model_name]=ioumat
+        if not fast:
+            print('model: {}'.format(model_name))
+            print('mean IoU: {}'.format(np.mean(np.array(meaniou))))
+        
     return ioumat_dict
                 
                 
@@ -188,11 +213,11 @@ if __name__=='__main__':
     #print(viridis.colors)
 
     # get annotations of whole dataset
-    #annotationdict = load_json_annotations(filepath, jsonlabel)
+    annotationdict = load_json_annotations(filepath, jsonlabel)
     
     # get bboxlist from annotation
-    #bboxlist = get_bboxes(annotationdict)
-    all_possible_boxes = generateAlltheBoxes()
+    bboxlist = get_bboxes(annotationdict) # enable this for actual data
+    #bboxlist = generateAlltheBoxes() # enable this for all possible data
     
     
     
@@ -200,8 +225,8 @@ if __name__=='__main__':
     ioumat_dict_1={}
     
     # compute iou matrix between 300x300 possible bboxes and the centroid lists
-    KmeanList=['ssd_origin','ssd_adjusted','ssd_clust23p_gt22','ssd_opt_gt22']
-    ioumat_dict_2 = getIoUMats(KmeanList,all_possible_boxes)
+    KmeanList=['ssd-origin','ssd-GPDF-gt22','ssd-regular-kmeans-gt22','ssd-strip-gt22']
+    ioumat_dict_2 = getIoUMats(KmeanList,bboxlist,fast=False)
     
     
     
