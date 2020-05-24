@@ -20,7 +20,7 @@ import os
 import json
 from matplotlib import pyplot as plt
 
-import check_performance as chp
+from IoU_tools import getIoU
 
 def parseString2ArrayExtra(filename, string):
     '''
@@ -311,6 +311,7 @@ def plotErrors(statdict,jsonlabellist,savepath,titleattach=''):
                'min':1,
                'mse':1
                }
+    kwargs = {'family':'Times New Roman','fontsize':20}
     
     # plot mean error for all distances
     for status in plot_label_stat:
@@ -325,13 +326,13 @@ def plotErrors(statdict,jsonlabellist,savepath,titleattach=''):
                 plt.plot(x_label,errorlist,marker='*',markersize=15,color=legendlist[distance],label=distance)
             else:
                 plt.plot(x_label,errorlist,marker='o',color=legendlist[distance],label=distance)
-        plt.title('Distance Error--{},{}'.format(status.upper(),titleattach))
-        plt.xlabel('baseline vehicle width (cm)')
-        plt.ylabel('error')
-        plt.legend(loc=legendloc[status])
+        plt.title('Distance Error--{},{}'.format(status.upper(),titleattach),**kwargs)
+        plt.xlabel('baseline vehicle width (cm)',**kwargs)
+        plt.ylabel('error',**kwargs)
+        plt.legend(loc=legendloc[status],prop={'family':'Times New Roman','size':18})
         if savepath is not None:
             plt.savefig(os.path.join(savepath,'{}_error_{}.png'.format(status,titleattach)))
-        plt.show()
+        #plt.show()
     return 0 
 
 def calculateMRs(gtpath,testpath,dtype='detection'):
@@ -377,8 +378,11 @@ def getMeanIoU(gtanno, testanno, label='detection'):
             for bbox in testanno[testname][imgname]['annotations']:
                 if bbox['category']=='leading':
                     bbox_test=bbox
-            ioulist.append(chp.getIoU(bbox_benchmark,bbox_test))
+            ioulist.append(getIoU(bbox_benchmark,bbox_test))
     miou=np.mean(np.array(ioulist))
+    miniou=np.min(np.array(ioulist))
+    maxiou=np.max(np.array(ioulist))
+    print('{} method iou: mean={},min={},max={}'.format(label,miou,miniou,maxiou))
     return ioulist, miou
 
 def getMeanWidthError(gtanno, testanno, label='detection'):
@@ -405,8 +409,50 @@ def getMeanWidthError(gtanno, testanno, label='detection'):
                     bbox_test=bbox
             wlist.append(abs(1-bbox_test['width']/bbox_benchmark['width']))
     m_w_error=np.mean(np.array(wlist))
+    print("{} method mean width error:".format(label))
+    print("MWE={}".format(m_w_error))
     return wlist, m_w_error
 
+def getIoUBtwConsecutiveLV(gtanno, label='gt'):
+    """
+    get IoU between consecutive leading vehicles in ground truth data.
+    
+    """
+    ioulist=[]
+    for jsonname in gtanno:
+        lastbbox={}
+        for imgname in gtanno[jsonname]:
+            for bbox in gtanno[jsonname][imgname]['annotations']:
+                if lastbbox=={}:
+                    # skip the first bbox
+                    lastbbox=bbox
+                    continue
+                else:
+                    # compute iou for each pair of bbox in two consecutive frames
+                    #print('iou={}'.format(getIoU(bbox,lastbbox)))
+                    ioulist.append(getIoU(bbox,lastbbox))
+    miou=np.mean(np.array(ioulist))
+           
+    return ioulist, miou
+
+def plotIoUList(ioulist,titleattach='',savepath=None):
+    """
+    this function takes an ioulist as input and plot a curve of it
+    the function is designed for getIoUBtwConsecutiveLV, but could be used for
+    other ioulists ^_^
+    
+    """
+    kwargs = {'family':'Times New Roman','fontsize':20}
+    
+    plt.figure(figsize=(20,6),dpi=80)
+    plt.rc('font',size=16)
+    plt.plot(ioulist)
+    plt.title('IoU--{}'.format(titleattach),**kwargs)
+    plt.ylabel('IoU',**kwargs)
+    plt.legend(loc=1,prop={'family':'Times New Roman','size':18})
+    if savepath is not None:
+        plt.savefig(os.path.join(savepath,'iou_curve_{}.png'.format(titleattach)))
+    
 def collectError(errordict,jsonlabel,detect_error,track_error):
     """
     collect detection and tracking error into a dictionary for further printing
@@ -449,6 +495,9 @@ def saveErrorTXT(savepath,errordict):
 
     return errors
 
+
+    
+
 if __name__=='__main__':
     accpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_Videos'
     trackpath='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/Part4_ACC_tracking/10'
@@ -470,7 +519,7 @@ if __name__=='__main__':
     _,_,_,track_anno,_=loadJsonResults(trackpath,annotationflag=True)
     
     # Miss Rate of detection & radar
-    # evaluate miss rate of detection
+    # evaluate miss rate of detection (TBD)
 # =============================================================================
 #     gtdict, MRs_detect = calculateMRs(gtpath=groundtruthpath,
 #                               testpath=predpath,
@@ -478,12 +527,15 @@ if __name__=='__main__':
 # =============================================================================
     # evaluate miss rate of acc radar
     
-
+    # evaluate IoU of consecutive leading vehicles in ground truth
+    ioulist_gt, miou_gt = getIoUBtwConsecutiveLV(gt_anno, label='gt')
+    plotIoUList(ioulist_gt,titleattach='LV in consecutive frames',savepath=groundtruthpath)
     # mIoU of detection/detection+tracking
     ioulist_detection, miou_detection = getMeanIoU(gt_anno,detect_anno,
                                                    label='detection')
     ioulist_tracking, miou_tracking = getMeanIoU(gt_anno,track_anno,
                                                  label='tracking')
+    
     
     # mean width error of detection/detection+tracking (in percentage)
     wlist_detection, mwe_detection= getMeanWidthError(gt_anno,detect_anno,
