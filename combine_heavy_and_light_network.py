@@ -158,7 +158,7 @@ def combineDetectionResult(precise_detection, rough_detection,
                             #print('due to {}, prediction not feasible'.format(previousimg))
                             break
                     
-                    if not prediction_feasible_flag:
+                    if prediction_fun_order==0 or (not prediction_feasible_flag):
                         # if not feasible, use rough detection
                         new_detection_dict[jsonname][imgname]=rough_detection[jsonname][imgname]
                     else:
@@ -233,7 +233,7 @@ def mergeTwoResultWithConfidence(res, addi, debug=True):
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--save_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/combined', 
+                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/combined_with_prediction', 
                         help="File path of input data, also the path to save figures")
     parser.add_argument('--title_attach',type=str,default='SSD-strip-150 and SSD-strip-300',
                         help='model name for charts')
@@ -279,17 +279,15 @@ if __name__=='__main__':
     with open(os.path.join(savepath,'combine_heavy_light_order_{}.json'.format(order)),'w') as savefile:
         savefile.write(json.dumps(detection_dict_for_save, sort_keys = True, indent = 4))    
     
-# =============================================================================
-#     # save the new result separately for evaluation
-#     for jsonname in new_detection_dict:
-#         detection_dict_for_save={}
-#         for imgname in new_detection_dict[jsonname]:
-#             detection_dict_for_save[imgname] = new_detection_dict[jsonname][imgname]
-#         with open(os.path.join(savepath,'{}'.format(jsonname)),'w') as savefile:
-#             savefile.write(json.dumps(detection_dict_for_save, sort_keys = True, indent = 4)) 
-#     
-#     
-# =============================================================================
+    # save the new result separately for evaluation
+    for jsonname in new_detection_dict:
+        detection_dict_for_save={}
+        for imgname in new_detection_dict[jsonname]:
+            detection_dict_for_save[imgname] = new_detection_dict[jsonname][imgname]
+        with open(os.path.join(savepath,'{}'.format(jsonname)),'w') as savefile:
+            savefile.write(json.dumps(detection_dict_for_save, sort_keys = True, indent = 4)) 
+    
+    
     
     
     
