@@ -308,31 +308,52 @@ def plotPrecisionRecall(performancedict,key='overall',
     plt.savefig(os.path.join(savepath,key+'_precision_vs_recall.png'))
     plt.show()
 
+SETUP={
+       'SSD_strip_300_gt22':{
+               'file_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/ssd_mobilenet_opt_300_gt22/',
+               'model_name':'ssd_mobilenet_opt_300_gt22',
+               'detected_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/ssd_mobilenet_opt_300_gt22/annotation_val_detection.json',
+               'benchmark_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/labels/bdd100k_labels_images_val_VIVA_format_crop_gt22.json',
+               },
+       'combine_heavy_light':{
+               'file_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/combined',
+               'model_name':'combine SSD-strip-300 & 150',
+               'detected_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/combined/combine_heavy_light_order_2.json',
+               'benchmark_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/gt/Part4_ACC_groundtruth.json'
+               },
+       'ssd_opt_vnx_300':{
+               'file_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/ssd_opt_vnx_finetune',
+               'model_name':'SSD-strip-300 on viewnyx',
+               'detected_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/ssd_opt_vnx_finetune/ssd_opt_vnx_finetune.json',
+               'benchmark_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/gt/Part4_ACC_groundtruth.json'
+               },
+       'ssd_opt_vnx_150':{
+               'file_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/ssd_opt_150_gt22',
+               'model_name':'SSD-strip-150 on viewnyx',
+               'detected_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/ssd_opt_150_gt22/ssd_opt_150_gt22.json',
+               'benchmark_path':'D:/Private Manager/Personal File/uOttawa/Lab works/2018 summer/Leading Vehicle/Viewnyx dataset/heavy_and_light/gt/Part4_ACC_groundtruth.json'
+               }
+       
+       }
+
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--file_path', type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/ssd_mobilenet_opt_300/', 
-                        help="File path of input data, also the path to save figures")
-    parser.add_argument('--model_name',type=str,default='ssd_mobilenet_opt_300',
+    parser.add_argument('--model',type=str,default='ssd_opt_vnx_150',
                         help='model name for charts')
-    parser.add_argument('--detected_path',type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/detection results/ssd_mobilenet_opt_300/annotation_val_detection.json',
-                        help='path of detected result, if "none", search the annotation files under file_path')
-    parser.add_argument('--benchmark_path',type=str, 
-                        default='D:/Private Manager/Personal File/uOttawa/Lab works/2018 fall/BerkleyDeepDrive/bdd100k/labels/bdd100k_labels_images_val_VIVA_format_crop_gt22.json',
-                        help='path of benchmark path, if "none", search the annotation files under file_path')
     parser.add_argument('--IoUthresh',type=float,default=0.5,
                         help='IoU threshold for choosing positive predictions')
     
     args = parser.parse_args()
+    model=args.model
+    IOUthresh       = args.IoUthresh
     
-    filepath=args.file_path
-    folderdict=os.listdir(filepath)
-    modelname=args.model_name
-    detectpath=args.detected_path
-    benchmarkpath=args.benchmark_path
-    IOUthresh=args.IoUthresh
+    filepath        = SETUP[model]['file_path']
+    modelname       = SETUP[model]['model_name']
+    detectpath      = SETUP[model]['detected_path']
+    benchmarkpath   = SETUP[model]['benchmark_path']
+    
+    folderdict      = os.listdir(filepath)
     totalperformance={}
     threshlist=[0.0001, 0.01, 0.02, 0.03, 0.04, 
                 0.05, 0.1, 0.15, 0.2, 0.25, 
